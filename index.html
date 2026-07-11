@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Планировщик недели</title>
+<style>
+  :root{
+    --bg:#f7f7f5;
+    --card:#ffffff;
+    --border:#e4e2dd;
+    --text:#2b2b28;
+    --muted:#83807a;
+    --accent:#4f6f6a;
+    --accent-soft:#e5edec;
+    --danger:#b5544a;
+    --danger-soft:#f6e9e7;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding:24px;
+  }
+  h1{font-size:20px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:0;}
+  .header-text{flex:1;min-width:220px;margin-bottom:14px;}
+  .layout{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;}
+  .left{flex:2;min-width:360px;display:flex;flex-direction:column;}
+  .right{flex:1;min-width:260px;display:flex;flex-direction:column;}
+  .cal-card{padding-bottom:14px;}
+  .cal-card-mini{width:220px;flex-shrink:0;padding:10px;margin-bottom:0;}
+  .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11.5px;font-weight:600;}
+  .cal-nav{border:none;background:transparent;cursor:pointer;font-size:13px;color:var(--text);padding:1px 6px;border-radius:6px;}
+  .cal-nav:hover{background:var(--accent-soft);}
+  .cal-grid{display:grid;grid-template-columns:16px repeat(7,1fr);gap:1px;}
+  .cal-wknum{font-size:8px;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:3px;}
+  .cal-wknum:hover{background:var(--accent-soft);color:var(--accent);}
+  .cal-dow{font-size:8px;color:var(--muted);text-align:center;padding-bottom:2px;}
+  .cal-day{font-size:9.5px;text-align:center;padding:3px 0;border-radius:4px;cursor:pointer;color:var(--text);}
+  .cal-day:hover{background:var(--accent-soft);}
+  .cal-day.other-month{color:#c9c6bf;}
+  .cal-day.today{font-weight:700;box-shadow:0 0 0 1.5px var(--accent) inset;}
+  .cal-day.selected{background:var(--accent);color:#fff;}
+  .cal-card-mini .btn{padding:4px 8px;font-size:11px;}
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(30,28,25,.4);
+    display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;
+  }
+  .modal-box{
+    background:var(--card);border-radius:var(--radius);padding:22px;max-width:360px;width:100%;
+    box-shadow:0 14px 36px rgba(0,0,0,.28);
+  }
+  .modal-box h3{margin:0 0 6px;font-size:16px;}
+  .modal-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
+  .modal-actions .btn{width:100%;}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;margin-bottom:16px;
+  }
+  .day-total{font-size:13px;color:var(--muted);margin-bottom:10px;}
+  .day-total.ok{color:var(--accent);}
+  .day-total.bad{color:var(--danger);}
+  .table-scroll{overflow-x:auto;}
+  table{width:100%;min-width:640px;border-collapse:collapse;font-size:14px;}
+  th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:4px 6px;border-bottom:1px solid var(--border);}
+  td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  input[type=time]{
+    border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px;
+    font-family:inherit;background:#fbfbfa;width:92px;
+  }
+  select, .name-input{
+    border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;
+    font-family:inherit;background:#fbfbfa;width:100%;
+  }
+  .name-cell{min-width:130px;}
+  .comment-input{
+    border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12.5px;
+    font-family:inherit;background:#fbfbfa;width:100%;min-width:110px;color:var(--text);
+    resize:none;overflow:hidden;line-height:1.4;display:block;
+  }
+  .comment-input::placeholder{color:#b7b4ad;}
+  .del-btn{
+    border:none;background:var(--danger-soft);color:var(--danger);
+    width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;
+  }
+  .del-btn:hover{background:var(--danger);color:#fff;}
+  input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:var(--accent);}
+  tr.done td{opacity:.45;}
+  tr.done .name-cell select{text-decoration:line-through;}
+  .add-row{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);
+    display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .add-row select, .add-row input{width:auto;}
+  .add-row .name-wrap{flex:1;min-width:140px;}
+  .btn{
+    background:var(--accent);color:#fff;border:none;border-radius:6px;
+    padding:7px 14px;font-size:13px;cursor:pointer;
+  }
+  .btn:hover{opacity:.9;}
+  .btn.secondary{background:var(--accent-soft);color:var(--accent);}
+  h2{font-size:15px;margin:0 0 12px;}
+  .cat-row{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:9px;}
+  .cat-name{width:120px;flex-shrink:0;color:var(--text);}
+  .cat-bar-wrap{flex:1;background:#eeece7;border-radius:4px;height:14px;overflow:hidden;position:relative;}
+  .cat-bar{height:100%;border-radius:4px;position:absolute;top:0;left:0;opacity:.35;}
+  .cat-bar-done{height:100%;border-radius:4px;position:absolute;top:0;left:0;}
+  .cat-hrs{width:150px;flex-shrink:0;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px;line-height:1.3;}
+  .cat-hrs b{color:var(--text);}
+  .legend{display:flex;gap:16px;font-size:11.5px;color:var(--muted);margin-bottom:10px;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;}
+  .week-total{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
+    display:flex;justify-content:space-between;font-size:13px;font-weight:600;}
+  .week-total.ok{color:var(--accent);}
+  .week-total.bad{color:var(--danger);}
+  .scope-toggle{display:flex;gap:5px;margin-bottom:12px;}
+  .scope-btn{
+    flex:1;padding:6px 4px;border-radius:8px;border:1px solid var(--border);
+    background:#fbfbfa;cursor:pointer;font-size:12px;color:var(--text);
+    transition:all .15s;
+  }
+  .scope-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5;}
+  .below-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);
+    display:flex;gap:22px;flex-wrap:wrap;}
+  .below-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);}
+  .below-name{color:var(--text);}
+  .below-input{
+    border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px;
+    font-family:inherit;background:#fbfbfa;width:64px;text-align:right;
+  }
+  .below-unit{color:var(--muted);font-size:12px;}
+  .save-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px;}
+  .save-hint{font-size:11.5px;color:var(--muted);}
+  .save-status{width:9px;height:9px;border-radius:50%;background:#c9c6bf;flex-shrink:0;transition:background .2s;}
+  .save-status.saving{background:#e0b34d;}
+  .save-status.saved{background:var(--accent);}
+  .save-status.error{background:var(--danger);}
+  .user-email{font-size:12px;color:var(--muted);margin-left:auto;}
+  .auth-field{
+    border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13.5px;
+    font-family:inherit;background:#fbfbfa;width:100%;margin-bottom:8px;color:var(--text);
+  }
+  .auth-error{color:var(--danger);font-size:12.5px;margin-bottom:8px;}
+  .auth-switch{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;}
+  .auth-switch a{color:var(--accent);cursor:pointer;text-decoration:underline;}
+  .loading-screen{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--muted);font-size:14px;background:var(--bg);z-index:200;
+  }
+  .filter-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;}
+  .chip{
+    padding:3px 9px;border-radius:14px;border:1px solid var(--border);
+    background:#fbfbfa;cursor:pointer;font-size:11px;color:var(--text);
+    display:flex;align-items:center;gap:4px;user-select:none;transition:all .15s;
+  }
+  .chip i{width:6px;height:6px;border-radius:50%;display:inline-block;}
+  .chip.active{color:#fff;border-color:transparent;}
+  .filter-results{display:flex;flex-direction:column;gap:8px;}
+  .filter-result-row{font-size:13px;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;}
+  .filter-result-name{font-weight:600;min-width:110px;}
+  .filter-result-days{color:var(--muted);}
+  .day-chip{
+    display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px;margin-right:4px;
+    background:var(--accent-soft);color:var(--accent);
+  }
+  .day-chip.none{background:transparent;color:var(--muted);font-style:italic;}
+  tr.filter-match{background:#fff6d8;}
+  tr.filter-match.done{background:#f3efe0;}
+  tr.gap-row td{padding:0;border-bottom:none;}
+  .gap-bar{
+    background:#fbdce8;color:#a24d72;font-size:11px;text-align:center;
+    padding:3px 6px;border-radius:0;letter-spacing:.2px;
+  }
+  tr.subtask-tr td{padding:4px 10px 10px 34px;border-bottom:1px solid var(--border);background:#fbfbf9;}
+  .subtask-wrap{display:flex;flex-direction:column;gap:5px;}
+  .subtask-row{display:flex;align-items:center;gap:8px;font-size:12px;}
+  .subtask-row .name-input{width:150px;flex-shrink:0;padding:3px 6px;font-size:12px;}
+  .subtask-row .comment-input{font-size:12px;padding:3px 6px;}
+  .subtask-row.done{opacity:.45;}
+  .subtask-row.done .name-input{text-decoration:line-through;}
+  .subtask-row.filter-match{background:#fff6d8;border-radius:5px;}
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loadingScreen">Загрузка…</div>
+
+<div class="modal-overlay" id="authOverlay" style="display:none;">
+  <div class="modal-box">
+    <h3 id="authTitle">Вход в планировщик</h3>
+    <div class="hint" style="margin:0 0 12px;">Данные привязаны к твоему аккаунту и синхронизируются в облаке — можно открыть с любого устройства.</div>
+    <input type="email" id="authEmail" class="auth-field" placeholder="Email" autocomplete="username">
+    <input type="password" id="authPassword" class="auth-field" placeholder="Пароль" autocomplete="current-password">
+    <div class="auth-error" id="authError" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn" id="authSubmitBtn" type="button">Войти</button>
+    </div>
+    <div class="auth-switch" id="authSwitch">Нет аккаунта? <a id="authSwitchLink">Зарегистрироваться</a></div>
+  </div>
+</div>
+
+<div class="layout" id="appRoot" style="display:none;">
+  <div class="left">
+    <div class="header-text">
+      <h1>Планировщик недели</h1>
+      <div class="sub">Меняй время, добавляй и удаляй активности, отмечай выполненное галочкой — сортировка по времени и итоги по часам пересчитываются сами.</div>
+    </div>
+    <div class="save-bar">
+      <span class="save-status" id="saveStatus" title="Статус сохранения"></span>
+      <span class="save-hint" id="saveHint">Изменения сохраняются автоматически.</span>
+      <button class="btn secondary" id="exportBtn">💾 Экспорт в файл</button>
+      <button class="btn secondary" id="importBtn">📂 Импорт из файла</button>
+      <input type="file" id="importInput" accept="application/json" style="display:none;">
+      <span class="user-email" id="userEmailLabel"></span>
+      <button class="btn secondary" id="logoutBtn">Выйти</button>
+    </div>
+
+    <div class="card">
+      <h2>Фильтр по активностям</h2>
+      <div class="hint" style="margin-top:0;margin-bottom:10px;">Отметь одну или несколько активностей — ниже появятся дни, в которые они встречаются, а в таблице дня и во вкладках такие строки/дни подсветятся.</div>
+      <div id="filterChips" class="filter-chips"></div>
+      <div id="filterResults" class="filter-results"></div>
+    </div>
+
+    <div class="card">
+      <div class="day-total" id="dayTotal"></div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th style="width:5%">✓</th><th style="width:22%">Активность</th><th>Начало</th><th>Конец</th><th style="width:26%">Комментарий</th><th></th></tr>
+          </thead>
+          <tbody id="dayBody"></tbody>
+        </table>
+      </div>
+      <div id="belowRows" class="below-wrap"></div>
+      <div class="add-row">
+        <div class="name-wrap">
+          <select id="addSelect"></select>
+          <input type="text" id="addNewName" class="name-input" placeholder="Название новой активности" style="display:none;margin-top:6px;">
+        </div>
+        <input type="time" id="addStart" value="09:00">
+      <input type="time" id="addEnd" value="10:00">
+      <button class="btn" id="addBtn">Добавить</button>
+    </div>
+    <div class="hint">Выбери «+ Новая активность», чтобы вписать своё название — оно попадёт в справочник и будет доступно во всех днях. Кнопка «+ задача» рядом с комментарием добавляет к слоту задачу без конкретного времени (просто впиши название, например «Сторис» в «Блог»).</div>
+  </div>
+  </div>
+
+  <div class="right">
+    <div class="card cal-card cal-card-mini">
+      <div class="cal-header">
+        <button class="cal-nav" id="calPrevMonth" type="button">‹</button>
+        <span id="calMonthLabel"></span>
+        <button class="cal-nav" id="calNextMonth" type="button">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <button class="btn secondary" id="calTodayBtn" style="width:100%;margin-top:6px;" type="button">Сегодня</button>
+    </div>
+
+    <div class="card">
+      <div class="scope-toggle" id="scopeToggle">
+        <button class="scope-btn" data-scope="day">День</button>
+        <button class="scope-btn" data-scope="week">Неделя</button>
+        <button class="scope-btn" data-scope="month">Месяц</button>
+        <button class="scope-btn" data-scope="year">Год</button>
+      </div>
+      <h2 id="catHeading">Итоги по категориям</h2>
+      <div class="legend"><span><i style="background:#c9c6bf"></i>план</span><span><i style="background:var(--accent)"></i>факт (по галочкам)</span></div>
+      <div id="catList"></div>
+      <div class="week-total" id="weekTotal"></div>
+      <h2 style="margin-top:18px;" id="tasksHeading">Задачи отчет</h2>
+      <div id="untimedTotals"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="newWeekModal" style="display:none;">
+  <div class="modal-box">
+    <h3>Для этой недели план ещё не был внесён</h3>
+    <div class="hint" id="newWeekRange" style="margin-top:0;margin-bottom:0;"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="nwSkipBtn" type="button">Пока не вносить</button>
+      <button class="btn secondary" id="nwDuplicateBtn" type="button">Дублировать план последней недели</button>
+      <button class="btn" id="nwBlankBtn" type="button">Создать план с нуля</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ==================== Firebase ====================
+// Данные, полученные в консоли Firebase при создании веб-приложения
+// (Project settings → General → Your apps → SDK setup and configuration).
+// apiKey для веб-приложений Firebase не секретный — доступ к данным защищён
+// правилами безопасности Firestore (firestore.rules), а не этим ключом.
+const firebaseConfig = {
+  apiKey: "ВСТАВЬ_СЮДА",
+  authDomain: "ВСТАВЬ_СЮДА.firebaseapp.com",
+  projectId: "ВСТАВЬ_СЮДА",
+  storageBucket: "ВСТАВЬ_СЮДА.appspot.com",
+  messagingSenderId: "ВСТАВЬ_СЮДА",
+  appId: "ВСТАВЬ_СЮДА"
+};
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+  createUserWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
+const DAYS = ["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"];
+
+// справочник активностей по умолчанию — для только что зарегистрированного пользователя
+// (растёт при добавлении новых активностей; для существующего пользователя перезаписывается
+// значением, загруженным из Firestore — см. loadUserData() ниже)
+let catalog = ["Сон","Гигиена","Свободное время","Работа","Завтрак","Обед","Ужин",
+  "Бокс","Коррекция","Силовая","Акробатика","Кардио","Теннис","Танцы","Дорога",
+  "Румынский","Терапия","Ремонт","ML","Блог","Прогулка","Сторис"];
+
+function act(name,start,end,comment,subs){ return {id:Math.random().toString(36).slice(2), name, start, end, done:false, comment: comment||"", subtasks: subs||[]}; }
+// задача без конкретного времени, прикреплённая к временному слоту (subtask активности)
+function subtask(name,comment){ return {id:Math.random().toString(36).slice(2), name, done:false, comment: comment||""}; }
+
+// Гигиена и Свободное время больше не занимают строки на таймлайне.
+// Гигиена — вручную задаваемые часы за день (hygieneHours).
+// Свободное время больше не хранится — оно считается автоматически как остаток суток
+// после активностей и гигиены (см. freeHours(d) ниже) и пересчитывается при любом
+// добавлении/удалении/изменении активностей.
+//
+// Это — начальный шаблон недели (тот самый план, который строился весь диалог).
+// Он используется только как содержимое ПЕРВОЙ недели. У каждой недели теперь —
+// свой собственный, независимый план: см. weeks{} / getOrCreateWeek() ниже.
+const SEED_WEEK_TEMPLATE = {
+  "Понедельник":{ hygieneHours:1, acts:[
+    act("Сон","23:00","07:30"),
+    act("Бокс","09:00","10:00"), act("Завтрак","10:00","10:30"), act("Работа","10:30","13:00"),
+    act("Коррекция","13:00","13:30"), act("Обед","13:30","14:00"), act("Работа","14:00","17:30"),
+    act("Ужин","18:30","19:00"), act("Блог","19:00","19:15",null,[subtask("Сторис")]),
+    act("Прогулка","19:15","20:45"), act("Румынский","20:45","22:00")
+  ]},
+  "Вторник":{ hygieneHours:1, acts:[
+    act("Сон","23:00","07:30"),
+    act("Румынский","08:30","10:00"), act("Завтрак","10:00","10:30"), act("Работа","10:30","13:30"),
+    act("Обед","13:30","14:00"), act("Работа","14:00","17:00"), act("Силовая","17:00","18:00"),
+    act("Ужин","18:30","19:00"), act("Терапия","19:00","20:00"),
+    act("Прогулка","20:00","21:30")
+  ]},
+  "Среда":{ hygieneHours:0.75, acts:[
+    act("Сон","23:00","07:30"),
+    act("Завтрак","10:00","10:30"), act("Работа","10:30","13:30"),
+    act("Бокс","13:30","14:30"), act("Коррекция","14:30","15:00"), act("Обед","15:00","15:30"),
+    act("Работа","15:30","18:30"), act("Ужин","18:30","19:00"), act("Блог","19:00","19:15",null,[subtask("Сторис")]),
+    act("Прогулка","19:15","20:45"), act("Акробатика","21:00","22:00")
+  ]},
+  "Четверг":{ hygieneHours:1, acts:[
+    act("Сон","23:00","07:30"), act("Силовая","08:00","09:00"),
+    act("Завтрак","10:00","10:30"), act("Работа","10:30","13:00"),
+    act("Коррекция","13:00","13:30"), act("Обед","13:30","14:00"), act("Работа","14:00","17:30"),
+    act("Блог","17:30","18:30",null,[subtask("Сторис")]), act("Ужин","18:30","19:00"), act("Блог","19:00","20:00"),
+    act("Блог","20:00","20:15"), act("Прогулка","20:15","21:30")
+  ]},
+  "Пятница":{ hygieneHours:1, acts:[
+    act("Сон","23:00","07:30"),
+    act("Румынский","08:30","10:00"), act("Завтрак","10:00","10:30"), act("Работа","10:30","13:00"),
+    act("Коррекция","13:00","13:30"), act("Обед","13:30","14:00"), act("Работа","14:00","17:30"),
+    act("Кардио","17:30","18:30"), act("Ужин","18:30","19:00"), act("Блог","19:00","19:15",null,[subtask("Сторис")])
+  ]},
+  "Суббота":{ hygieneHours:1, acts:[
+    act("Сон","23:00","07:30"),
+    act("Завтрак","10:00","10:30"), act("Обед","13:30","14:00"),
+    act("Ужин","18:30","19:00"), act("Прогулка","19:00","20:30")
+  ]},
+  "Воскресенье":{ hygieneHours:1, acts:[
+    act("Сон","23:00","07:30"), act("ML","08:00","10:00"),
+    act("Завтрак","10:00","10:30"), act("ML","10:30","11:30"), act("Румынский","11:30","13:00"),
+    act("Теннис","14:00","15:00"), act("Обед","15:00","15:30"),
+    act("Дорога","15:30","16:30"), act("Танцы","17:00","19:00"),
+    act("Дорога","19:00","20:00"), act("Ужин","20:00","20:30"), act("Блог","20:30","20:45",null,[subtask("Сторис")]),
+    act("Прогулка","20:45","22:00")
+  ]}
+};
+
+// ---- даты и недели ----
+function pad2(n){ return String(n).padStart(2,"0"); }
+function isoDate(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function parseISODate(s){ const [y,m,dd]=s.split("-").map(Number); return new Date(y,m-1,dd); }
+function mondayOf(date){
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dow = d.getDay(); // 0=Вс,1=Пн,...6=Сб
+  d.setDate(d.getDate() + (dow===0 ? -6 : 1-dow));
+  return d;
+}
+function addDays(date,n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
+function sameDate(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+function isoWeekNumber(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+const MONTHS_SHORT = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+const MONTHS_FULL = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+const WEEKDAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+
+// глубокая копия недели-шаблона: та же структура активностей, но все галочки сброшены —
+// используется, когда открываем неделю, для которой ещё нет собственных данных
+function cloneWeekAsTemplate(src){
+  const copy = {};
+  DAYS.forEach(d=>{
+    const day = src[d];
+    copy[d] = {
+      hygieneHours: day.hygieneHours,
+      acts: day.acts.map(a=>({
+        id: Math.random().toString(36).slice(2),
+        name: a.name, start: a.start, end: a.end, done:false,
+        comment: a.comment||"",
+        subtasks: (a.subtasks||[]).map(s=>({
+          id: Math.random().toString(36).slice(2), name: s.name, done:false, comment: s.comment||""
+        }))
+      }))
+    };
+  });
+  return copy;
+}
+
+// weeks — у каждой недели свой собственный, независимый план (ключ — ISO-дата понедельника).
+// Меняя данные внутри одной недели, другие недели не затрагиваются.
+// До входа пользователя (или до загрузки его данных из Firestore) эти переменные пустые —
+// реальные значения проставляются в loadUserData()/initFreshUserData() ниже, после чего
+// вызывается renderAll() и приложение показывается.
+let weeks = {};
+const _today0 = new Date();
+const _firstWeekKey = isoDate(mondayOf(_today0));
+
+let currentWeekKey = null;
+let week = null; // указатель на данные текущей недели — весь код ниже продолжает работать с `week` как раньше
+let currentDay = DAYS[(_today0.getDay()+6)%7]; // по умолчанию открываем сегодняшний день
+let calendarViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
+
+let selectedFilters = new Set();
+let summaryScope = "day"; // "day" — сводка по текущему дню (по умолчанию), "week" — по всей неделе
+
+// пустая неделя «с нуля» — во всех днях нет ни активностей, ни гигиены
+function blankWeekTemplate(){
+  const copy = {};
+  DAYS.forEach(d=>{ copy[d] = { hygieneHours: 0, acts: [] }; });
+  return copy;
+}
+
+// вернуть данные недели по ключу-понедельнику, склонировав ближайшую существующую неделю
+// (по умолчанию — последнюю известную) как шаблон. Используется ТОЛЬКО после того, как
+// пользователь явно подтвердил это в попапе «план ещё не внесён» — сам по себе не решает,
+// нужно ли создавать неделю (см. goToDate/nwDuplicateBtn ниже).
+function getOrCreateWeek(weekKey){
+  if(weeks[weekKey]) return weeks[weekKey];
+  const keys = Object.keys(weeks).sort();
+  let sourceKey = null;
+  for(let i=keys.length-1;i>=0;i--){ if(keys[i] < weekKey){ sourceKey = keys[i]; break; } }
+  if(!sourceKey) sourceKey = keys.find(k=>k>weekKey) || keys[0];
+  weeks[weekKey] = cloneWeekAsTemplate(weeks[sourceKey]);
+  return weeks[weekKey];
+}
+
+function fmtWeekRange(weekStart){
+  const weekEnd = addDays(weekStart, 6);
+  const sameMonth = weekStart.getMonth()===weekEnd.getMonth();
+  const startPart = weekStart.getDate() + (sameMonth ? "" : " " + MONTHS_SHORT[weekStart.getMonth()]);
+  return `Неделя ${isoWeekNumber(weekStart)}: ${startPart} – ${weekEnd.getDate()} ${MONTHS_SHORT[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`;
+}
+
+// недавно запрошенная дата/неделя, для которой ещё нет плана и ждём решения пользователя в попапе
+let pendingNewWeek = null;
+
+function activateWeek(date, weekKey){
+  currentWeekKey = weekKey;
+  week = weeks[weekKey];
+  currentDay = DAYS[(date.getDay()+6)%7];
+  calendarViewMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  renderAll();
+}
+
+function openNewWeekPrompt(date, weekKey){
+  pendingNewWeek = {date, weekKey};
+  document.getElementById("newWeekRange").textContent = fmtWeekRange(mondayOf(date));
+  document.getElementById("newWeekModal").style.display = "flex";
+}
+function closeNewWeekPrompt(){
+  pendingNewWeek = null;
+  document.getElementById("newWeekModal").style.display = "none";
+}
+
+// перейти к конкретной календарной дате (и, соответственно, к её неделе). Если для этой
+// недели ещё нет плана — не создаём его молча, а спрашиваем пользователя, что сделать.
+function goToDate(date){
+  const weekKey = isoDate(mondayOf(date));
+  if(weeks[weekKey]){
+    activateWeek(date, weekKey);
+  } else {
+    openNewWeekPrompt(date, weekKey);
+  }
+}
+function goToToday(){ goToDate(new Date()); }
+
+function daysContaining(name){
+  return DAYS.filter(d=>{
+    const day = week[d];
+    if(name==="Гигиена") return day.hygieneHours>0;
+    if(name==="Свободное время") return freeHours(d)>0;
+    return day.acts.some(a=>a.name===name || (a.subtasks && a.subtasks.some(s=>s.name===name)));
+  });
+}
+
+// автоматически растягивает textarea-заметку по высоте под её содержимое
+function autosize(el){ el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+
+function toMin(t){ const [h,m]=t.split(":").map(Number); return h*60+m; }
+function toHM(min){ min=((min%1440)+1440)%1440; const h=Math.floor(min/60), m=min%60; return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"); }
+function duration(a){ let s=toMin(a.start), e=toMin(a.end); let d=e-s; if(d<=0) d+=1440; return d/60; }
+function sortKey(a){ let s=toMin(a.start), e=toMin(a.end); return (e<=s) ? s-1440 : s; }
+
+const PALETTE = ["#4f6f6a","#a3785f","#7d8fb3","#c98a5e","#6b9e78","#9a6b9e","#5e93a8",
+  "#b3785f","#7a7d5e","#8f6b8f","#5f9e9a","#a8845e","#6f8f7d","#8f5e6b","#5e7a8f",
+  "#9e8a5f","#6b7d9e","#a85e78","#5e9e8f","#8f7a5e","#7d5e8f"];
+function colorFor(name){
+  let idx = catalog.indexOf(name);
+  if(idx<0) idx = 0;
+  return PALETTE[idx % PALETTE.length];
+}
+
+// обобщённые варианты, принимающие день данных напрямую (для агрегации за месяц/год,
+// когда день может принадлежать не текущей, а любой сохранённой неделе)
+function actsHoursOf(day){ return day.acts.reduce((s,a)=>s+duration(a),0); }
+function plannedHoursOf(day){ return actsHoursOf(day) + day.hygieneHours; }
+function freeHoursOf(day){ return Math.max(0, 24 - plannedHoursOf(day)); }
+
+// часы, занятые активностями с конкретным временем (для дня d текущей недели)
+function actsHours(d){ return actsHoursOf(week[d]); }
+// запланировано «дел» за день: активности + гигиена (без свободного времени — оно считается от остатка)
+function plannedHours(d){ return plannedHoursOf(week[d]); }
+// свободное время — то, что остаётся от суток после запланированных дел; при перегрузке дня — 0
+function freeHours(d){ return freeHoursOf(week[d]); }
+function dayTotalHours(d){
+  const planned = plannedHours(d);
+  return planned > 24 ? planned : 24;
+}
+
+function renderDay(){
+  const day = week[currentDay];
+  day.acts.sort((a,b)=>sortKey(a)-sortKey(b));
+  const acts = day.acts;
+  const body = document.getElementById("dayBody");
+  body.innerHTML = "";
+  acts.forEach((a, idx)=>{
+    const tr = document.createElement("tr");
+    let cls = a.done ? "done" : "";
+    if(selectedFilters.has(a.name)) cls += " filter-match";
+    tr.className = cls.trim();
+
+    const doneTd = document.createElement("td");
+    const doneCb = document.createElement("input");
+    doneCb.type="checkbox"; doneCb.checked = !!a.done;
+    doneCb.onchange = ()=>{ a.done = doneCb.checked; renderAll(); };
+    doneTd.appendChild(doneCb);
+    tr.appendChild(doneTd);
+
+    const nameTd = document.createElement("td");
+    nameTd.className = "name-cell";
+    const sel = document.createElement("select");
+    catalog.filter(c=>c!=="Гигиена" && c!=="Свободное время").forEach(c=>{
+      const o=document.createElement("option"); o.value=c; o.textContent=c;
+      if(c===a.name) o.selected=true;
+      sel.appendChild(o);
+    });
+    sel.onchange = ()=>{ a.name = sel.value; renderAll(); };
+    nameTd.appendChild(sel);
+    tr.appendChild(nameTd);
+
+    const startTd = document.createElement("td");
+    const startInp = document.createElement("input");
+    startInp.type="time"; startInp.value=a.start;
+    startInp.onchange = ()=>{ a.start = startInp.value; renderAll(); };
+    startTd.appendChild(startInp);
+    tr.appendChild(startTd);
+
+    const endTd = document.createElement("td");
+    const endInp = document.createElement("input");
+    endInp.type="time"; endInp.value=a.end;
+    endInp.onchange = ()=>{ a.end = endInp.value; renderAll(); };
+    endTd.appendChild(endInp);
+    tr.appendChild(endTd);
+
+    const commentTd = document.createElement("td");
+    commentTd.style.display = "flex"; commentTd.style.alignItems="flex-start"; commentTd.style.gap="6px";
+    const addSubBtn = document.createElement("button");
+    addSubBtn.className="btn secondary"; addSubBtn.textContent="+ задача";
+    addSubBtn.title = "Добавить задачу без времени в слот «"+a.name+"»";
+    addSubBtn.style.flexShrink="0"; addSubBtn.style.padding="4px 9px"; addSubBtn.style.fontSize="11.5px";
+    addSubBtn.onclick = ()=>{
+      a.subtasks = a.subtasks || [];
+      a.subtasks.push(subtask(""));
+      renderAll();
+    };
+    commentTd.appendChild(addSubBtn);
+    const commentInp = document.createElement("textarea");
+    commentInp.rows = 1; commentInp.className="comment-input";
+    commentInp.style.flex="1";
+    commentInp.placeholder="заметка..."; commentInp.value=a.comment||"";
+    commentInp.addEventListener("input", ()=>{ a.comment = commentInp.value; autosize(commentInp); });
+    commentTd.appendChild(commentInp);
+    tr.appendChild(commentTd);
+
+    const delTd = document.createElement("td");
+    const delBtn = document.createElement("button");
+    delBtn.className="del-btn"; delBtn.textContent="✕";
+    delBtn.onclick = ()=>{
+      day.acts = day.acts.filter(x=>x.id!==a.id);
+      renderAll();
+    };
+    delTd.appendChild(delBtn);
+    tr.appendChild(delTd);
+
+    body.appendChild(tr);
+    autosize(commentInp);
+
+    // вложенные задачи без времени, прикреплённые к этому слоту — блок показываем, только если задачи есть
+    if((a.subtasks||[]).length){
+      const subTr = document.createElement("tr");
+      subTr.className = "subtask-tr";
+      const subTd = document.createElement("td");
+      subTd.colSpan = 6;
+      const subWrap = document.createElement("div");
+      subWrap.className = "subtask-wrap";
+      const subCommentEls = [];
+
+      a.subtasks.forEach(s=>{
+        const sRow = document.createElement("div");
+        let sCls = "subtask-row" + (s.done ? " done":"");
+        if(selectedFilters.has(s.name)) sCls += " filter-match";
+        sRow.className = sCls;
+
+        const sCb = document.createElement("input");
+        sCb.type="checkbox"; sCb.checked = !!s.done;
+        sCb.onchange = ()=>{ s.done = sCb.checked; renderAll(); };
+        sRow.appendChild(sCb);
+
+        const sNameInp = document.createElement("input");
+        sNameInp.type="text"; sNameInp.className="name-input"; sNameInp.style.width="150px"; sNameInp.style.fontSize="12px";
+        sNameInp.placeholder="название задачи..."; sNameInp.value=s.name||"";
+        sNameInp.onchange = ()=>{ s.name = sNameInp.value; renderAll(); };
+        sRow.appendChild(sNameInp);
+
+        const sComment = document.createElement("textarea");
+        sComment.rows = 1; sComment.className="comment-input";
+        sComment.placeholder="заметка..."; sComment.value=s.comment||"";
+        sComment.addEventListener("input", ()=>{ s.comment = sComment.value; autosize(sComment); });
+        sRow.appendChild(sComment);
+        subCommentEls.push(sComment);
+
+        const sDel = document.createElement("button");
+        sDel.className="del-btn"; sDel.textContent="✕";
+        sDel.onclick = ()=>{
+          a.subtasks = a.subtasks.filter(x=>x.id!==s.id);
+          renderAll();
+        };
+        sRow.appendChild(sDel);
+
+        subWrap.appendChild(sRow);
+      });
+
+      subTd.appendChild(subWrap);
+      subTr.appendChild(subTd);
+      body.appendChild(subTr);
+      subCommentEls.forEach(autosize);
+    }
+
+    // тонкая розовая полоска — разрыв (свободное время) до следующего занятого слота
+    const next = acts[(idx+1)%acts.length];
+    let gapMin = toMin(next.start) - toMin(a.end);
+    if(gapMin < 0) gapMin += 1440;
+    if(gapMin > 1){
+      const gapTr = document.createElement("tr");
+      gapTr.className = "gap-row";
+      const gapTd = document.createElement("td");
+      gapTd.colSpan = 6;
+      const hrs = gapMin/60;
+      gapTd.innerHTML = `<div class="gap-bar">Свободное время · ${a.end}–${next.start} (${hrs.toFixed(2)}ч)</div>`;
+      gapTr.appendChild(gapTd);
+      body.appendChild(gapTr);
+    }
+  });
+
+  // Внизу оставляем только Свободное время — считается автоматически (остаток суток)
+  const belowWrap = document.getElementById("belowRows");
+  belowWrap.innerHTML = "";
+
+  const free = freeHours(currentDay);
+  const freeRow = document.createElement("div");
+  freeRow.className = "below-row";
+  freeRow.innerHTML = `
+    <span class="below-name">Свободное время</span>
+    <input type="number" class="below-input" value="${free.toFixed(2)}" disabled style="opacity:.65;cursor:not-allowed;">
+    <span class="below-unit">ч за день (авто, из остатка суток)</span>
+  `;
+  belowWrap.appendChild(freeRow);
+
+  const planned = plannedHours(currentDay);
+  const over = planned > 24 + 0.01;
+  const total = dayTotalHours(currentDay);
+  const dt = document.getElementById("dayTotal");
+  dt.textContent = `Итого за день: ${total.toFixed(2)} ч из 24` + (over ? "  — перебор по времени, проверь пробелы/наложения" : "  ✓ сходится (остаток зафиксирован в отдых)");
+  dt.className = "day-total " + (over ? "bad":"ok");
+
+  // add-form select (Гигиена и Свободное время сюда не попадают — редактируются отдельно внизу)
+  const addSel = document.getElementById("addSelect");
+  addSel.innerHTML = "";
+  catalog.filter(c=>c!=="Гигиена" && c!=="Свободное время").forEach(c=>{
+    const o=document.createElement("option"); o.value=c; o.textContent=c;
+    addSel.appendChild(o);
+  });
+  const newOpt = document.createElement("option");
+  newOpt.value="__new__"; newOpt.textContent="+ Новая активность...";
+  addSel.appendChild(newOpt);
+}
+
+// возвращает список {weekKey, dayName} для текущего масштаба сводки (день/неделя/месяц/год).
+// День и неделя берутся из текущей открытой недели; месяц и год — собираются по ВСЕМ
+// сохранённым неделям (weeks{}), у каждой из которых свой независимый план.
+function scopeEntries(){
+  if(summaryScope==="day") return [{weekKey: currentWeekKey, dayName: currentDay}];
+  if(summaryScope==="week") return DAYS.map(d=>({weekKey: currentWeekKey, dayName: d}));
+
+  const refDate = addDays(parseISODate(currentWeekKey), DAYS.indexOf(currentDay));
+  let fromDate, toDate;
+  if(summaryScope==="month"){
+    fromDate = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
+    toDate = new Date(refDate.getFullYear(), refDate.getMonth()+1, 0);
+  } else { // "year"
+    fromDate = new Date(refDate.getFullYear(), 0, 1);
+    toDate = new Date(refDate.getFullYear(), 11, 31);
+  }
+  const result = [];
+  Object.keys(weeks).forEach(wk=>{
+    const weekStart = parseISODate(wk);
+    DAYS.forEach((dayName, idx)=>{
+      const date = addDays(weekStart, idx);
+      if(date >= fromDate && date <= toDate) result.push({weekKey: wk, dayName, date});
+    });
+  });
+  result.sort((a,b)=>a.date-b.date);
+  return result;
+}
+
+function scopeLabel(){
+  if(summaryScope==="day") return currentDay.toLowerCase();
+  if(summaryScope==="week") return "неделя";
+  const refDate = addDays(parseISODate(currentWeekKey), DAYS.indexOf(currentDay));
+  if(summaryScope==="month") return MONTHS_FULL[refDate.getMonth()].toLowerCase() + " " + refDate.getFullYear();
+  return String(refDate.getFullYear());
+}
+
+function renderUntimedTotals(){
+  const scopeList = scopeEntries();
+  const planned = {};
+  const done = {};
+  scopeList.forEach(({weekKey, dayName})=>{
+    weeks[weekKey][dayName].acts.forEach(a=>{
+      (a.subtasks||[]).forEach(s=>{
+        planned[s.name] = (planned[s.name]||0) + 1;
+        if(s.done) done[s.name] = (done[s.name]||0) + 1;
+      });
+    });
+  });
+  const heading = document.getElementById("tasksHeading");
+  if(heading) heading.textContent = "Задачи отчет · " + scopeLabel();
+  const wrap = document.getElementById("untimedTotals");
+  wrap.innerHTML = "";
+  const entries = Object.entries(planned).sort((a,b)=>b[1]-a[1]);
+  if(entries.length===0){
+    wrap.innerHTML = `<div class="hint" style="margin:0;">Пока нет задач без времени за этот период.</div>`;
+    return;
+  }
+  entries.forEach(([name,planCount])=>{
+    const doneCount = done[name] || 0;
+    const pct = planCount ? (doneCount/planCount*100) : 0;
+    const row = document.createElement("div");
+    row.className = "cat-row";
+    row.innerHTML = `
+      <div class="cat-name">${name}</div>
+      <div class="cat-bar-wrap">
+        <div class="cat-bar" style="width:100%;background:${colorFor(name)}"></div>
+        <div class="cat-bar-done" style="width:${pct}%;background:${colorFor(name)}"></div>
+      </div>
+      <div class="cat-hrs">запланировано <b>${planCount}</b> · сделано <b>${doneCount}</b> (${pct.toFixed(0)}%)</div>
+    `;
+    wrap.appendChild(row);
+  });
+}
+
+function renderCatalogTotals(){
+  const scopeList = scopeEntries();
+  const planTotals = {};
+  const factTotals = {};
+  scopeList.forEach(({weekKey, dayName})=>{
+    const day = weeks[weekKey][dayName];
+    day.acts.forEach(a=>{
+      const h = duration(a);
+      planTotals[a.name] = (planTotals[a.name]||0) + h;
+      if(a.done) factTotals[a.name] = (factTotals[a.name]||0) + h;
+    });
+    const free = freeHoursOf(day);
+    planTotals["Гигиена"] = (planTotals["Гигиена"]||0) + day.hygieneHours;
+    planTotals["Свободное время"] = (planTotals["Свободное время"]||0) + free;
+    // Гигиена/Свободное время не отмечаются галочкой — считаем их выполненными как есть (фон)
+    factTotals["Гигиена"] = (factTotals["Гигиена"]||0) + day.hygieneHours;
+    factTotals["Свободное время"] = (factTotals["Свободное время"]||0) + free;
+  });
+  const entries = Object.entries(planTotals).sort((a,b)=>b[1]-a[1]);
+  const grandPlan = entries.reduce((s,[,v])=>s+v,0);
+  const grandFact = Object.values(factTotals).reduce((s,v)=>s+v,0);
+
+  const list = document.getElementById("catList");
+  list.innerHTML = "";
+  entries.forEach(([name,planHrs])=>{
+    const factHrs = factTotals[name] || 0;
+    // шкала — по собственному плану активности (100% = её план), а не по доле от дня/недели
+    const pctDoneOfPlan = planHrs ? (factHrs/planHrs*100) : 0;
+    const row = document.createElement("div");
+    row.className = "cat-row";
+    row.innerHTML = `
+      <div class="cat-name">${name}</div>
+      <div class="cat-bar-wrap">
+        <div class="cat-bar" style="width:100%;background:${colorFor(name)}"></div>
+        <div class="cat-bar-done" style="width:${pctDoneOfPlan}%;background:${colorFor(name)}"></div>
+      </div>
+      <div class="cat-hrs">план <b>${planHrs.toFixed(2)}ч</b> · факт <b>${factHrs.toFixed(2)}ч</b> (${pctDoneOfPlan.toFixed(0)}%)</div>
+    `;
+    list.appendChild(row);
+  });
+
+  const capacity = scopeList.length * 24;
+  const wt = document.getElementById("weekTotal");
+  const off = Math.abs(grandPlan-capacity) > 0.01;
+  const pctFact = grandPlan ? (grandFact/grandPlan*100) : 0;
+  const SCOPE_LABELS = {day:"Итого за день", week:"Итого за неделю", month:"Итого за месяц", year:"Итого за год"};
+  const label = SCOPE_LABELS[summaryScope] || "Итого";
+  if(scopeList.length===0){
+    wt.innerHTML = `<span>${label}</span><span>нет данных за этот период</span>`;
+    wt.className = "week-total";
+  } else {
+    wt.innerHTML = `<span>${label}</span><span>план ${grandPlan.toFixed(2)}ч из ${capacity} · факт ${grandFact.toFixed(2)}ч (${pctFact.toFixed(0)}%)</span>`;
+    wt.className = "week-total " + (off ? "bad":"ok");
+  }
+
+  const catHeading = document.getElementById("catHeading");
+  if(catHeading) catHeading.textContent = "Итоги по категориям · " + scopeLabel();
+}
+
+function renderFilters(){
+  // Гигиена и Свободное время не показываются в фильтре — это не отдельные строки
+  // на таймлайне, подсвечивать в таблице всё равно нечего.
+  // Из остального — только активности, которые встречаются хотя бы раз за неделю.
+  const usedNames = catalog.filter(name=>name!=="Гигиена" && name!=="Свободное время" && daysContaining(name).length>0);
+  // если выбранная активность больше нигде не встречается — снимаем её из фильтра
+  [...selectedFilters].forEach(name=>{ if(!usedNames.includes(name)) selectedFilters.delete(name); });
+
+  const chipsWrap = document.getElementById("filterChips");
+  chipsWrap.innerHTML = "";
+  usedNames.forEach(name=>{
+    const chip = document.createElement("div");
+    const active = selectedFilters.has(name);
+    chip.className = "chip" + (active ? " active":"");
+    chip.style.background = active ? colorFor(name) : "";
+    chip.innerHTML = `<i style="background:${colorFor(name)}"></i>${name}`;
+    chip.onclick = ()=>{
+      if(selectedFilters.has(name)) selectedFilters.delete(name);
+      else selectedFilters.add(name);
+      renderAll();
+    };
+    chipsWrap.appendChild(chip);
+  });
+
+  const resultsWrap = document.getElementById("filterResults");
+  resultsWrap.innerHTML = "";
+  if(selectedFilters.size===0){
+    resultsWrap.innerHTML = `<div class="hint" style="margin:0;">Ничего не выбрано — отметь активность выше, чтобы увидеть, в какие дни она встречается.</div>`;
+    return;
+  }
+  [...selectedFilters].forEach(name=>{
+    const days = daysContaining(name);
+    const row = document.createElement("div");
+    row.className = "filter-result-row";
+    const daysHtml = days.length
+      ? days.map(d=>`<span class="day-chip">${d}</span>`).join("")
+      : `<span class="day-chip none">не найдено ни в один день</span>`;
+    row.innerHTML = `<span class="filter-result-name">${name}</span><span class="filter-result-days">${daysHtml}</span>`;
+    resultsWrap.appendChild(row);
+  });
+}
+
+function renderScopeToggle(){
+  document.querySelectorAll("#scopeToggle .scope-btn").forEach(btn=>{
+    btn.classList.toggle("active", btn.dataset.scope===summaryScope);
+  });
+}
+
+function renderCalendar(){
+  const label = document.getElementById("calMonthLabel");
+  label.textContent = MONTHS_FULL[calendarViewMonth.getMonth()] + " " + calendarViewMonth.getFullYear();
+
+  const grid = document.getElementById("calGrid");
+  grid.innerHTML = "";
+
+  const corner = document.createElement("div");
+  grid.appendChild(corner);
+  WEEKDAY_SHORT.forEach(w=>{
+    const el = document.createElement("div");
+    el.className = "cal-dow"; el.textContent = w;
+    grid.appendChild(el);
+  });
+
+  const monthStart = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth(), 1);
+  const gridStart = mondayOf(monthStart);
+  const realToday = new Date();
+  const selectedDate = addDays(parseISODate(currentWeekKey), DAYS.indexOf(currentDay));
+
+  for(let row=0; row<6; row++){
+    const rowStart = addDays(gridStart, row*7);
+
+    const wknumEl = document.createElement("div");
+    wknumEl.className = "cal-wknum";
+    wknumEl.textContent = isoWeekNumber(rowStart);
+    wknumEl.title = "Выбрать эту неделю";
+    wknumEl.onclick = ()=>{ goToDate(rowStart); };
+    grid.appendChild(wknumEl);
+
+    for(let col=0; col<7; col++){
+      const date = addDays(rowStart, col);
+      const cell = document.createElement("div");
+      let cls = "cal-day";
+      if(date.getMonth()!==calendarViewMonth.getMonth()) cls += " other-month";
+      if(sameDate(date, realToday)) cls += " today";
+      if(sameDate(date, selectedDate)) cls += " selected";
+      cell.className = cls;
+      cell.textContent = date.getDate();
+      cell.onclick = ()=>{ goToDate(date); };
+      grid.appendChild(cell);
+    }
+  }
+}
+
+function renderAll(){
+  renderDay();
+  renderScopeToggle();
+  renderUntimedTotals();
+  renderCatalogTotals();
+  renderFilters();
+  renderCalendar();
+  scheduleSave();
+}
+
+document.getElementById("calPrevMonth").addEventListener("click", ()=>{
+  calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()-1, 1);
+  renderCalendar();
+});
+document.getElementById("calNextMonth").addEventListener("click", ()=>{
+  calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()+1, 1);
+  renderCalendar();
+});
+document.getElementById("calTodayBtn").addEventListener("click", ()=>{
+  goToToday();
+});
+
+document.getElementById("nwSkipBtn").addEventListener("click", ()=>{
+  // «Пока не вносить» — просто закрываем попап, никуда не переходим и ничего не создаём
+  closeNewWeekPrompt();
+});
+document.getElementById("nwDuplicateBtn").addEventListener("click", ()=>{
+  if(!pendingNewWeek) return;
+  const {date, weekKey} = pendingNewWeek;
+  getOrCreateWeek(weekKey); // клонирует ближайшую известную неделю и сохраняет её под weekKey
+  closeNewWeekPrompt();
+  activateWeek(date, weekKey);
+});
+document.getElementById("nwBlankBtn").addEventListener("click", ()=>{
+  if(!pendingNewWeek) return;
+  const {date, weekKey} = pendingNewWeek;
+  weeks[weekKey] = blankWeekTemplate();
+  closeNewWeekPrompt();
+  activateWeek(date, weekKey);
+});
+document.getElementById("newWeekModal").addEventListener("click", (e)=>{
+  if(e.target.id==="newWeekModal") closeNewWeekPrompt();
+});
+
+document.querySelectorAll("#scopeToggle .scope-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    summaryScope = btn.dataset.scope;
+    renderAll();
+  });
+});
+
+document.getElementById("addSelect").addEventListener("change", (e)=>{
+  document.getElementById("addNewName").style.display = e.target.value==="__new__" ? "block":"none";
+});
+
+document.getElementById("addBtn").addEventListener("click", ()=>{
+  const sel = document.getElementById("addSelect");
+  let name = sel.value;
+  if(name==="__new__"){
+    const newName = document.getElementById("addNewName").value.trim();
+    if(!newName){ alert("Впиши название новой активности"); return; }
+    name = newName;
+    if(!catalog.includes(name)) catalog.push(name);
+  }
+  const start = document.getElementById("addStart").value;
+  const end = document.getElementById("addEnd").value;
+  week[currentDay].acts.push(act(name,start,end));
+  document.getElementById("addNewName").value="";
+  renderAll();
+});
+
+// ==================== экспорт/импорт JSON (ручной бэкап, не обязателен — облако сохраняет само) ====================
+document.getElementById("exportBtn").addEventListener("click", ()=>{
+  const data = JSON.stringify({catalog, weeks, currentWeekKey, currentDay}, null, 2);
+  const blob = new Blob([data], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `week-plan-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("importBtn").addEventListener("click", ()=>{
+  document.getElementById("importInput").click();
+});
+
+document.getElementById("importInput").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      if(!data.catalog) throw new Error("bad format");
+      catalog = data.catalog;
+      if(data.weeks){
+        // новый формат: у каждой недели свой план
+        weeks = data.weeks;
+        currentWeekKey = (data.currentWeekKey && weeks[data.currentWeekKey])
+          ? data.currentWeekKey
+          : Object.keys(weeks).sort()[0];
+      } else if(data.week){
+        // старый формат (единственная неделя-шаблон) — переносим её на неделю текущей реальной даты
+        weeks = {};
+        currentWeekKey = isoDate(mondayOf(new Date()));
+        weeks[currentWeekKey] = data.week;
+      } else {
+        throw new Error("bad format");
+      }
+      week = weeks[currentWeekKey];
+      currentDay = data.currentDay && DAYS.includes(data.currentDay) ? data.currentDay : DAYS[(new Date().getDay()+6)%7];
+      calendarViewMonth = new Date(parseISODate(currentWeekKey).getFullYear(), parseISODate(currentWeekKey).getMonth(), 1);
+      renderAll(); // это также запускает сохранение импортированных данных в облако (scheduleSave внутри renderAll)
+    }catch(err){
+      alert("Не получилось прочитать файл — убедись, что это файл, сохранённый этим же планировщиком.");
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+// ==================== облачное хранение (Firebase Auth + Firestore) ====================
+// Документы в Firestore:
+//   users/{uid}            — {catalog, currentWeekKey, currentDay, updatedAt}
+//   users/{uid}/weeks/{weekKey} — план одной недели (7 дней), как раньше лежал в weeks[weekKey]
+// Правила безопасности (firestore.rules) разрешают пользователю читать/писать только свои
+// документы — так несколько аккаунтов не видят данные друг друга.
+
+let currentUser = null;
+let suppressSave = true; // true, пока идёт первичная загрузка — чтобы не перезаписывать облако тем же самым сразу после чтения
+let saveTimer = null;
+
+function userWeeksCol(uid){ return collection(db, "users", uid, "weeks"); }
+function userMetaDoc(uid){ return doc(db, "users", uid); }
+function userWeekDoc(uid, weekKey){ return doc(db, "users", uid, "weeks", weekKey); }
+
+function setSaveStatus(state){
+  const el = document.getElementById("saveStatus");
+  const hint = document.getElementById("saveHint");
+  el.className = "save-status" + (state ? " "+state : "");
+  if(state==="saving"){ hint.textContent = "Сохраняю…"; }
+  else if(state==="saved"){ hint.textContent = "Изменения сохранены."; }
+  else if(state==="error"){ hint.textContent = "Не удалось сохранить — проверь соединение с интернетом."; }
+  else { hint.textContent = "Изменения сохраняются автоматически."; }
+}
+
+// откладывает сохранение на 700мс после последнего изменения — чтобы не писать в базу
+// на каждую нажатую клавишу в комментарии, а одним пакетом после паузы
+function scheduleSave(){
+  if(suppressSave || !currentUser) return;
+  setSaveStatus("saving");
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 700);
+}
+
+async function saveNow(){
+  if(!currentUser) return;
+  const uid = currentUser.uid;
+  try{
+    await setDoc(userMetaDoc(uid), {catalog, currentWeekKey, currentDay, updatedAt: serverTimestamp()}, {merge:true});
+    await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
+    setSaveStatus("saved");
+  }catch(err){
+    console.error("Ошибка сохранения в Firestore:", err);
+    setSaveStatus("error");
+  }
+}
+// сохранить сразу перед закрытием вкладки, если сохранение ещё не прошло
+window.addEventListener("beforeunload", ()=>{ if(saveTimer) saveNow(); });
+
+// новый пользователь — создаём план по умолчанию (тот же стартовый шаблон,
+// который раньше был общим для всех) и сразу сохраняем его в Firestore
+async function initFreshUserData(uid){
+  weeks = {};
+  weeks[_firstWeekKey] = cloneWeekAsTemplate(SEED_WEEK_TEMPLATE);
+  currentWeekKey = _firstWeekKey;
+  week = weeks[currentWeekKey];
+  currentDay = DAYS[(_today0.getDay()+6)%7];
+  calendarViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
+  await setDoc(userMetaDoc(uid), {catalog, currentWeekKey, currentDay, updatedAt: serverTimestamp()});
+  await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
+}
+
+// загрузить все данные вошедшего пользователя из Firestore в локальные переменные
+async function loadUserData(uid){
+  const metaSnap = await getDoc(userMetaDoc(uid));
+  if(!metaSnap.exists()){
+    await initFreshUserData(uid);
+    return;
+  }
+  const meta = metaSnap.data();
+  catalog = meta.catalog && meta.catalog.length ? meta.catalog : catalog;
+
+  weeks = {};
+  const weeksSnap = await getDocs(userWeeksCol(uid));
+  weeksSnap.forEach(d=>{ weeks[d.id] = d.data(); });
+
+  const keys = Object.keys(weeks);
+  if(keys.length===0){
+    // на аккаунте есть meta, но почему-то нет ни одной недели — не должно происходить
+    // в норме, но подстрахуемся тем же самым стартовым шаблоном
+    weeks[_firstWeekKey] = cloneWeekAsTemplate(SEED_WEEK_TEMPLATE);
+    currentWeekKey = _firstWeekKey;
+  } else {
+    currentWeekKey = (meta.currentWeekKey && weeks[meta.currentWeekKey]) ? meta.currentWeekKey : keys.sort()[0];
+  }
+  week = weeks[currentWeekKey];
+  currentDay = (meta.currentDay && DAYS.includes(meta.currentDay)) ? meta.currentDay : DAYS[(_today0.getDay()+6)%7];
+  calendarViewMonth = new Date(parseISODate(currentWeekKey).getFullYear(), parseISODate(currentWeekKey).getMonth(), 1);
+}
+
+// ---- экран входа/регистрации ----
+let authMode = "login"; // "login" | "signup"
+
+function renderAuthMode(){
+  document.getElementById("authTitle").textContent = authMode==="login" ? "Вход в планировщик" : "Регистрация";
+  document.getElementById("authSubmitBtn").textContent = authMode==="login" ? "Войти" : "Зарегистрироваться";
+  document.getElementById("authSwitch").innerHTML = authMode==="login"
+    ? `Нет аккаунта? <a id="authSwitchLink">Зарегистрироваться</a>`
+    : `Уже есть аккаунт? <a id="authSwitchLink">Войти</a>`;
+  document.getElementById("authSwitchLink").addEventListener("click", ()=>{
+    authMode = authMode==="login" ? "signup" : "login";
+    document.getElementById("authError").style.display = "none";
+    renderAuthMode();
+  });
+}
+renderAuthMode();
+
+function authErrorMessage(err){
+  const code = err && err.code;
+  const map = {
+    "auth/invalid-email": "Некорректный email.",
+    "auth/user-not-found": "Пользователь с таким email не найден.",
+    "auth/wrong-password": "Неверный пароль.",
+    "auth/invalid-credential": "Неверный email или пароль.",
+    "auth/email-already-in-use": "Этот email уже зарегистрирован — попробуй войти.",
+    "auth/weak-password": "Пароль слишком короткий (минимум 6 символов).",
+    "auth/too-many-requests": "Слишком много попыток — попробуй чуть позже."
+  };
+  return map[code] || "Что-то пошло не так. Попробуй ещё раз.";
+}
+
+document.getElementById("authSubmitBtn").addEventListener("click", async ()=>{
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const errEl = document.getElementById("authError");
+  errEl.style.display = "none";
+  if(!email || !password){
+    errEl.textContent = "Заполни email и пароль."; errEl.style.display = "block"; return;
+  }
+  try{
+    if(authMode==="login"){
+      await signInWithEmailAndPassword(auth, email, password);
+    } else {
+      await createUserWithEmailAndPassword(auth, email, password);
+    }
+    // дальше подхватит onAuthStateChanged ниже
+  }catch(err){
+    errEl.textContent = authErrorMessage(err);
+    errEl.style.display = "block";
+  }
+});
+
+document.getElementById("logoutBtn").addEventListener("click", ()=>{
+  signOut(auth);
+});
+
+onAuthStateChanged(auth, async (user)=>{
+  const loadingScreen = document.getElementById("loadingScreen");
+  const authOverlay = document.getElementById("authOverlay");
+  const appRoot = document.getElementById("appRoot");
+
+  if(user){
+    currentUser = user;
+    loadingScreen.style.display = "flex";
+    authOverlay.style.display = "none";
+    try{
+      suppressSave = true;
+      await loadUserData(user.uid);
+      document.getElementById("userEmailLabel").textContent = user.email || "";
+      renderAll();
+      setSaveStatus("");
+      appRoot.style.display = "flex";
+    }catch(err){
+      console.error("Ошибка загрузки данных пользователя:", err);
+      alert("Не удалось загрузить данные — проверь соединение с интернетом и обнови страницу.");
+    }finally{
+      suppressSave = false;
+      loadingScreen.style.display = "none";
+    }
+  } else {
+    currentUser = null;
+    appRoot.style.display = "none";
+    loadingScreen.style.display = "none";
+    authOverlay.style.display = "flex";
+  }
+});
+</script>
+</body>
+</html>
