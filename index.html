@@ -184,9 +184,16 @@
   .subtask-row.done{opacity:.45;}
   .subtask-row.done .name-input{text-decoration:line-through;}
   .subtask-row.filter-match{background:#fff6d8;border-radius:5px;}
+  .top-toast{
+    position:fixed;top:16px;right:16px;z-index:500;
+    background:var(--danger);color:#fff;font-size:13px;padding:10px 14px;border-radius:8px;
+    box-shadow:0 4px 14px rgba(0,0,0,.18);max-width:320px;display:none;
+  }
 </style>
 </head>
 <body>
+
+<div class="top-toast" id="topToast"></div>
 
 <div class="loading-screen" id="loadingScreen">Загрузка…</div>
 
@@ -468,9 +475,31 @@ function daysContaining(name){
 function autosize(el){ el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
 
 function toMin(t){ const [h,m]=t.split(":").map(Number); return h*60+m; }
+
+// конец активности должен быть строго позже начала (переход через полночь не допускается),
+// кроме исключения: конец ровно в 00:00 всегда допустим — это конец текущих суток
+function isValidTimeRange(start,end){
+  if(end==="00:00") return true;
+  return toMin(end) > toMin(start);
+}
+
+let _topToastTimer = null;
+function showTopToast(message){
+  const el = document.getElementById("topToast");
+  el.textContent = message;
+  el.style.display = "block";
+  if(_topToastTimer) clearTimeout(_topToastTimer);
+  _topToastTimer = setTimeout(()=>{ el.style.display = "none"; }, 4000);
+}
 function toHM(min){ min=((min%1440)+1440)%1440; const h=Math.floor(min/60), m=min%60; return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"); }
 function duration(a){ let s=toMin(a.start), e=toMin(a.end); let d=e-s; if(d<=0) d+=1440; return d/60; }
-function sortKey(a){ let s=toMin(a.start), e=toMin(a.end); return (e<=s) ? s-1440 : s; }
+// сортировка в рамках дня — по времени начала. Исключение: конец ровно в 00:00 значит
+// «до конца текущего дня» и сортируется по обычному началу, а не как перенос с предыдущей ночи.
+function sortKey(a){
+  let s=toMin(a.start), e=toMin(a.end);
+  if(a.end==="00:00") return s;
+  return (e<=s) ? s-1440 : s;
+}
 
 const PALETTE = ["#4f6f6a","#a3785f","#7d8fb3","#c98a5e","#6b9e78","#9a6b9e","#5e93a8",
   "#b3785f","#7a7d5e","#8f6b8f","#5f9e9a","#a8845e","#6f8f7d","#8f5e6b","#5e7a8f",
@@ -532,14 +561,28 @@ function renderDay(){
     const startTd = document.createElement("td");
     const startInp = document.createElement("input");
     startInp.type="time"; startInp.value=a.start;
-    startInp.onchange = ()=>{ a.start = startInp.value; renderAll(); };
+    startInp.onchange = ()=>{
+      if(!isValidTimeRange(startInp.value, a.end)){
+        showTopToast("Конец активности не может быть раньше начала.");
+        startInp.value = a.start;
+        return;
+      }
+      a.start = startInp.value; renderAll();
+    };
     startTd.appendChild(startInp);
     tr.appendChild(startTd);
 
     const endTd = document.createElement("td");
     const endInp = document.createElement("input");
     endInp.type="time"; endInp.value=a.end;
-    endInp.onchange = ()=>{ a.end = endInp.value; renderAll(); };
+    endInp.onchange = ()=>{
+      if(!isValidTimeRange(a.start, endInp.value)){
+        showTopToast("Конец активности не может быть раньше начала.");
+        endInp.value = a.end;
+        return;
+      }
+      a.end = endInp.value; renderAll();
+    };
     endTd.appendChild(endInp);
     tr.appendChild(endTd);
 
@@ -968,6 +1011,10 @@ document.getElementById("addBtn").addEventListener("click", ()=>{
   }
   const start = document.getElementById("addStart").value;
   const end = document.getElementById("addEnd").value;
+  if(!isValidTimeRange(start, end)){
+    showTopToast("Конец активности не может быть раньше начала.");
+    return;
+  }
   week[currentDay].acts.push(act(name,start,end));
   document.getElementById("addNewName").value="";
   renderAll();
