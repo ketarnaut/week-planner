@@ -213,9 +213,6 @@
     <div class="save-bar">
       <span class="save-status" id="saveStatus" title="Статус сохранения"></span>
       <span class="save-hint" id="saveHint">Изменения сохраняются автоматически.</span>
-      <button class="btn secondary" id="exportBtn">💾 Экспорт в файл</button>
-      <button class="btn secondary" id="importBtn">📂 Импорт из файла</button>
-      <input type="file" id="importInput" accept="application/json" style="display:none;">
       <span class="user-email" id="userEmailLabel"></span>
       <button class="btn secondary" id="logoutBtn">Выйти</button>
     </div>
@@ -324,9 +321,7 @@ const DAYS = ["Понедельник","Вторник","Среда","Четве
 // справочник активностей по умолчанию — для только что зарегистрированного пользователя
 // (растёт при добавлении новых активностей; для существующего пользователя перезаписывается
 // значением, загруженным из Firestore — см. loadUserData() ниже)
-let catalog = ["Сон","Гигиена","Свободное время","Работа","Завтрак","Обед","Ужин",
-  "Бокс","Коррекция","Силовая","Акробатика","Кардио","Теннис","Танцы","Дорога",
-  "Румынский","Терапия","Ремонт","ML","Блог","Прогулка","Сторис"];
+let catalog = ["Сон","Работа","Еда","Спорт","Прогулка","Обучение"];
 
 function act(name,start,end,comment,subs){ return {id:Math.random().toString(36).slice(2), name, start, end, done:false, comment: comment||"", subtasks: subs||[]}; }
 // задача без конкретного времени, прикреплённая к временному слоту (subtask активности)
@@ -337,59 +332,6 @@ function subtask(name,comment){ return {id:Math.random().toString(36).slice(2), 
 // Свободное время больше не хранится — оно считается автоматически как остаток суток
 // после активностей и гигиены (см. freeHours(d) ниже) и пересчитывается при любом
 // добавлении/удалении/изменении активностей.
-//
-// Это — начальный шаблон недели (тот самый план, который строился весь диалог).
-// Он используется только как содержимое ПЕРВОЙ недели. У каждой недели теперь —
-// свой собственный, независимый план: см. weeks{} / getOrCreateWeek() ниже.
-const SEED_WEEK_TEMPLATE = {
-  "Понедельник":{ hygieneHours:1, acts:[
-    act("Сон","23:00","07:30"),
-    act("Бокс","09:00","10:00"), act("Завтрак","10:00","10:30"), act("Работа","10:30","13:00"),
-    act("Коррекция","13:00","13:30"), act("Обед","13:30","14:00"), act("Работа","14:00","17:30"),
-    act("Ужин","18:30","19:00"), act("Блог","19:00","19:15",null,[subtask("Сторис")]),
-    act("Прогулка","19:15","20:45"), act("Румынский","20:45","22:00")
-  ]},
-  "Вторник":{ hygieneHours:1, acts:[
-    act("Сон","23:00","07:30"),
-    act("Румынский","08:30","10:00"), act("Завтрак","10:00","10:30"), act("Работа","10:30","13:30"),
-    act("Обед","13:30","14:00"), act("Работа","14:00","17:00"), act("Силовая","17:00","18:00"),
-    act("Ужин","18:30","19:00"), act("Терапия","19:00","20:00"),
-    act("Прогулка","20:00","21:30")
-  ]},
-  "Среда":{ hygieneHours:0.75, acts:[
-    act("Сон","23:00","07:30"),
-    act("Завтрак","10:00","10:30"), act("Работа","10:30","13:30"),
-    act("Бокс","13:30","14:30"), act("Коррекция","14:30","15:00"), act("Обед","15:00","15:30"),
-    act("Работа","15:30","18:30"), act("Ужин","18:30","19:00"), act("Блог","19:00","19:15",null,[subtask("Сторис")]),
-    act("Прогулка","19:15","20:45"), act("Акробатика","21:00","22:00")
-  ]},
-  "Четверг":{ hygieneHours:1, acts:[
-    act("Сон","23:00","07:30"), act("Силовая","08:00","09:00"),
-    act("Завтрак","10:00","10:30"), act("Работа","10:30","13:00"),
-    act("Коррекция","13:00","13:30"), act("Обед","13:30","14:00"), act("Работа","14:00","17:30"),
-    act("Блог","17:30","18:30",null,[subtask("Сторис")]), act("Ужин","18:30","19:00"), act("Блог","19:00","20:00"),
-    act("Блог","20:00","20:15"), act("Прогулка","20:15","21:30")
-  ]},
-  "Пятница":{ hygieneHours:1, acts:[
-    act("Сон","23:00","07:30"),
-    act("Румынский","08:30","10:00"), act("Завтрак","10:00","10:30"), act("Работа","10:30","13:00"),
-    act("Коррекция","13:00","13:30"), act("Обед","13:30","14:00"), act("Работа","14:00","17:30"),
-    act("Кардио","17:30","18:30"), act("Ужин","18:30","19:00"), act("Блог","19:00","19:15",null,[subtask("Сторис")])
-  ]},
-  "Суббота":{ hygieneHours:1, acts:[
-    act("Сон","23:00","07:30"),
-    act("Завтрак","10:00","10:30"), act("Обед","13:30","14:00"),
-    act("Ужин","18:30","19:00"), act("Прогулка","19:00","20:30")
-  ]},
-  "Воскресенье":{ hygieneHours:1, acts:[
-    act("Сон","23:00","07:30"), act("ML","08:00","10:00"),
-    act("Завтрак","10:00","10:30"), act("ML","10:30","11:30"), act("Румынский","11:30","13:00"),
-    act("Теннис","14:00","15:00"), act("Обед","15:00","15:30"),
-    act("Дорога","15:30","16:30"), act("Танцы","17:00","19:00"),
-    act("Дорога","19:00","20:00"), act("Ужин","20:00","20:30"), act("Блог","20:30","20:45",null,[subtask("Сторис")]),
-    act("Прогулка","20:45","22:00")
-  ]}
-};
 
 // ---- даты и недели ----
 function pad2(n){ return String(n).padStart(2,"0"); }
@@ -1031,60 +973,6 @@ document.getElementById("addBtn").addEventListener("click", ()=>{
   renderAll();
 });
 
-// ==================== экспорт/импорт JSON (ручной бэкап, не обязателен — облако сохраняет само) ====================
-document.getElementById("exportBtn").addEventListener("click", ()=>{
-  const data = JSON.stringify({catalog, weeks, currentWeekKey, currentDay}, null, 2);
-  const blob = new Blob([data], {type:"application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const stamp = new Date().toISOString().slice(0,10);
-  a.href = url;
-  a.download = `week-plan-${stamp}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
-
-document.getElementById("importBtn").addEventListener("click", ()=>{
-  document.getElementById("importInput").click();
-});
-
-document.getElementById("importInput").addEventListener("change", (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev)=>{
-    try{
-      const data = JSON.parse(ev.target.result);
-      if(!data.catalog) throw new Error("bad format");
-      catalog = data.catalog;
-      if(data.weeks){
-        // новый формат: у каждой недели свой план
-        weeks = data.weeks;
-        currentWeekKey = (data.currentWeekKey && weeks[data.currentWeekKey])
-          ? data.currentWeekKey
-          : Object.keys(weeks).sort()[0];
-      } else if(data.week){
-        // старый формат (единственная неделя-шаблон) — переносим её на неделю текущей реальной даты
-        weeks = {};
-        currentWeekKey = isoDate(mondayOf(new Date()));
-        weeks[currentWeekKey] = data.week;
-      } else {
-        throw new Error("bad format");
-      }
-      week = weeks[currentWeekKey];
-      currentDay = data.currentDay && DAYS.includes(data.currentDay) ? data.currentDay : DAYS[(new Date().getDay()+6)%7];
-      calendarViewMonth = new Date(parseISODate(currentWeekKey).getFullYear(), parseISODate(currentWeekKey).getMonth(), 1);
-      renderAll(); // это также запускает сохранение импортированных данных в облако (scheduleSave внутри renderAll)
-    }catch(err){
-      alert("Не получилось прочитать файл — убедись, что это файл, сохранённый этим же планировщиком.");
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = "";
-});
-
 // ==================== облачное хранение (Firebase Auth + Firestore) ====================
 // Документы в Firestore:
 //   users/{uid}            — {catalog, currentWeekKey, currentDay, updatedAt}
@@ -1134,11 +1022,10 @@ async function saveNow(){
 // сохранить сразу перед закрытием вкладки, если сохранение ещё не прошло
 window.addEventListener("beforeunload", ()=>{ if(saveTimer) saveNow(); });
 
-// новый пользователь — создаём план по умолчанию (тот же стартовый шаблон,
-// который раньше был общим для всех) и сразу сохраняем его в Firestore
+// новый пользователь — начинает с пустого плана (без активностей) и сам вносит своё расписание
 async function initFreshUserData(uid){
   weeks = {};
-  weeks[_firstWeekKey] = cloneWeekAsTemplate(SEED_WEEK_TEMPLATE);
+  weeks[_firstWeekKey] = blankWeekTemplate();
   currentWeekKey = _firstWeekKey;
   week = weeks[currentWeekKey];
   currentDay = DAYS[(_today0.getDay()+6)%7];
@@ -1164,8 +1051,8 @@ async function loadUserData(uid){
   const keys = Object.keys(weeks);
   if(keys.length===0){
     // на аккаунте есть meta, но почему-то нет ни одной недели — не должно происходить
-    // в норме, но подстрахуемся тем же самым стартовым шаблоном
-    weeks[_firstWeekKey] = cloneWeekAsTemplate(SEED_WEEK_TEMPLATE);
+    // в норме, но подстрахуемся пустым планом
+    weeks[_firstWeekKey] = blankWeekTemplate();
     currentWeekKey = _firstWeekKey;
   } else {
     currentWeekKey = (meta.currentWeekKey && weeks[meta.currentWeekKey]) ? meta.currentWeekKey : keys.sort()[0];
