@@ -1,8 +1,8 @@
 name: Deploy to Firebase Hosting
 
 # Автоматический деплой при каждом пуше в main.
-# Требует секрет репозитория FIREBASE_SERVICE_ACCOUNT (JSON-ключ сервисного аккаунта Firebase)
-# и переменную/секрет FIREBASE_PROJECT_ID — см. README.md, раздел про GitHub Actions.
+# Требует секрет репозитория FIREBASE_SERVICE_ACCOUNT_PLANNER_C6545 (JSON-ключ сервисного
+# аккаунта Firebase, создан командой `firebase init hosting:github`).
 on:
   push:
     branches: [main]
@@ -17,6 +17,6 @@ jobs:
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: "${{ secrets.GITHUB_TOKEN }}"
-          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
-          projectId: "${{ secrets.FIREBASE_PROJECT_ID }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_PLANNER_C6545 }}"
+          projectId: planner-c6545
           channelId: live
