@@ -334,10 +334,8 @@ function act(name,start,end,comment,subs){ return {id:Math.random().toString(36)
 // задача без конкретного времени, прикреплённая к временному слоту (subtask активности)
 function subtask(name,comment){ return {id:Math.random().toString(36).slice(2), name, done:false, comment: comment||""}; }
 
-// Гигиена и Свободное время больше не занимают строки на таймлайне.
-// Гигиена — вручную задаваемые часы за день (hygieneHours).
-// Свободное время больше не хранится — оно считается автоматически как остаток суток
-// после активностей и гигиены (см. freeHours(d) ниже) и пересчитывается при любом
+// Свободное время не хранится — оно считается автоматически как остаток суток
+// после активностей (см. freeHours(d) ниже) и пересчитывается при любом
 // добавлении/удалении/изменении активностей.
 
 // ---- даты и недели ----
@@ -370,7 +368,6 @@ function cloneWeekAsTemplate(src){
   DAYS.forEach(d=>{
     const day = src[d];
     copy[d] = {
-      hygieneHours: day.hygieneHours,
       acts: day.acts.map(a=>({
         id: Math.random().toString(36).slice(2),
         name: a.name, start: a.start, end: a.end, done:false,
@@ -401,10 +398,10 @@ let calendarViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
 let selectedFilters = new Set();
 let summaryScope = "day"; // "day" — сводка по текущему дню (по умолчанию), "week" — по всей неделе
 
-// пустая неделя «с нуля» — во всех днях нет ни активностей, ни гигиены
+// пустая неделя «с нуля» — во всех днях нет активностей
 function blankWeekTemplate(){
   const copy = {};
-  DAYS.forEach(d=>{ copy[d] = { hygieneHours: 0, acts: [] }; });
+  DAYS.forEach(d=>{ copy[d] = { acts: [] }; });
   return copy;
 }
 
@@ -465,7 +462,6 @@ function goToToday(){ goToDate(new Date()); }
 function daysContaining(name){
   return DAYS.filter(d=>{
     const day = week[d];
-    if(name==="Гигиена") return day.hygieneHours>0;
     if(name==="Свободное время") return freeHours(d)>0;
     return day.acts.some(a=>a.name===name || (a.subtasks && a.subtasks.some(s=>s.name===name)));
   });
@@ -513,12 +509,12 @@ function colorFor(name){
 // обобщённые варианты, принимающие день данных напрямую (для агрегации за месяц/год,
 // когда день может принадлежать не текущей, а любой сохранённой неделе)
 function actsHoursOf(day){ return day.acts.reduce((s,a)=>s+duration(a),0); }
-function plannedHoursOf(day){ return actsHoursOf(day) + day.hygieneHours; }
+function plannedHoursOf(day){ return actsHoursOf(day); }
 function freeHoursOf(day){ return Math.max(0, 24 - plannedHoursOf(day)); }
 
 // часы, занятые активностями с конкретным временем (для дня d текущей недели)
 function actsHours(d){ return actsHoursOf(week[d]); }
-// запланировано «дел» за день: активности + гигиена (без свободного времени — оно считается от остатка)
+// запланировано «дел» за день (без свободного времени — оно считается от остатка)
 function plannedHours(d){ return plannedHoursOf(week[d]); }
 // свободное время — то, что остаётся от суток после запланированных дел; при перегрузке дня — 0
 function freeHours(d){ return freeHoursOf(week[d]); }
@@ -549,7 +545,7 @@ function renderDay(){
     const nameTd = document.createElement("td");
     nameTd.className = "name-cell";
     const sel = document.createElement("select");
-    catalog.filter(c=>c!=="Гигиена" && c!=="Свободное время").forEach(c=>{
+    catalog.filter(c=>c!=="Свободное время").forEach(c=>{
       const o=document.createElement("option"); o.value=c; o.textContent=c;
       if(c===a.name) o.selected=true;
       sel.appendChild(o);
@@ -707,10 +703,10 @@ function renderDay(){
   dt.textContent = `Итого за день: ${total.toFixed(2)} ч из 24` + (over ? "  — перебор по времени, проверь пробелы/наложения" : "  ✓ сходится (остаток зафиксирован в отдых)");
   dt.className = "day-total " + (over ? "bad":"ok");
 
-  // add-form select (Гигиена и Свободное время сюда не попадают — редактируются отдельно внизу)
+  // add-form select (Свободное время сюда не попадает — это расчётная величина, не активность)
   const addSel = document.getElementById("addSelect");
   addSel.innerHTML = "";
-  catalog.filter(c=>c!=="Гигиена" && c!=="Свободное время").forEach(c=>{
+  catalog.filter(c=>c!=="Свободное время").forEach(c=>{
     const o=document.createElement("option"); o.value=c; o.textContent=c;
     addSel.appendChild(o);
   });
@@ -805,10 +801,8 @@ function renderCatalogTotals(){
       if(a.done) factTotals[a.name] = (factTotals[a.name]||0) + h;
     });
     const free = freeHoursOf(day);
-    planTotals["Гигиена"] = (planTotals["Гигиена"]||0) + day.hygieneHours;
     planTotals["Свободное время"] = (planTotals["Свободное время"]||0) + free;
-    // Гигиена/Свободное время не отмечаются галочкой — считаем их выполненными как есть (фон)
-    factTotals["Гигиена"] = (factTotals["Гигиена"]||0) + day.hygieneHours;
+    // Свободное время не отмечается галочкой — считаем его выполненным как есть (фон)
     factTotals["Свободное время"] = (factTotals["Свободное время"]||0) + free;
   });
   const entries = Object.entries(planTotals).sort((a,b)=>b[1]-a[1]);
@@ -853,10 +847,10 @@ function renderCatalogTotals(){
 }
 
 function renderFilters(){
-  // Гигиена и Свободное время не показываются в фильтре — это не отдельные строки
-  // на таймлайне, подсвечивать в таблице всё равно нечего.
+  // Свободное время не показывается в фильтре — это не отдельная строка на таймлайне,
+  // подсвечивать в таблице всё равно нечего.
   // Из остального — только активности, которые встречаются хотя бы раз за неделю.
-  const usedNames = catalog.filter(name=>name!=="Гигиена" && name!=="Свободное время" && daysContaining(name).length>0);
+  const usedNames = catalog.filter(name=>name!=="Свободное время" && daysContaining(name).length>0);
   // если выбранная активность больше нигде не встречается — снимаем её из фильтра
   [...selectedFilters].forEach(name=>{ if(!usedNames.includes(name)) selectedFilters.delete(name); });
 
