@@ -92,6 +92,9 @@
   input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:var(--accent);}
   tr.done td{opacity:.45;}
   tr.done .name-cell select{text-decoration:line-through;}
+  tr.overlap{background:var(--danger-soft);}
+  tr.overlap td{border-bottom-color:#e8c9c5;}
+  tr.overlap input[type=time]{border-color:var(--danger);}
   .add-row{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);
     display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .add-row select, .add-row input{width:auto;}
@@ -497,6 +500,27 @@ function sortKey(a){
   return (e<=s) ? s-1440 : s;
 }
 
+// занятый интервал активности в минутах от начала суток: [start, start+длительность)
+function actRange(a){
+  const s = toMin(a.start);
+  return [s, s + Math.round(duration(a)*60)];
+}
+function actsOverlap(a, b){
+  const [s1,e1] = actRange(a);
+  const [s2,e2] = actRange(b);
+  return s1 < e2 && s2 < e1;
+}
+// id всех активностей дня, у которых есть наложение по времени хотя бы с одной другой
+function overlappingIds(acts){
+  const ids = new Set();
+  for(let i=0;i<acts.length;i++){
+    for(let j=i+1;j<acts.length;j++){
+      if(actsOverlap(acts[i], acts[j])){ ids.add(acts[i].id); ids.add(acts[j].id); }
+    }
+  }
+  return ids;
+}
+
 const PALETTE = ["#4f6f6a","#a3785f","#7d8fb3","#c98a5e","#6b9e78","#9a6b9e","#5e93a8",
   "#b3785f","#7a7d5e","#8f6b8f","#5f9e9a","#a8845e","#6f8f7d","#8f5e6b","#5e7a8f",
   "#9e8a5f","#6b7d9e","#a85e78","#5e9e8f","#8f7a5e","#7d5e8f"];
@@ -527,12 +551,14 @@ function renderDay(){
   const day = week[currentDay];
   day.acts.sort((a,b)=>sortKey(a)-sortKey(b));
   const acts = day.acts;
+  const overlapIds = overlappingIds(acts);
   const body = document.getElementById("dayBody");
   body.innerHTML = "";
   acts.forEach((a, idx)=>{
     const tr = document.createElement("tr");
     let cls = a.done ? "done" : "";
     if(selectedFilters.has(a.name)) cls += " filter-match";
+    if(overlapIds.has(a.id)) cls += " overlap";
     tr.className = cls.trim();
 
     const doneTd = document.createElement("td");
@@ -666,10 +692,15 @@ function renderDay(){
       subCommentEls.forEach(autosize);
     }
 
-    // тонкая розовая полоска — разрыв (свободное время) до следующего занятого слота
+    // тонкая розовая полоска — разрыв (свободное время) до следующего занятого слота.
+    // Перенос через полночь (+1440) имеет смысл только для последней активности дня
+    // (её «следующая» — первая активность того же дня, по кругу). Для остальных пар
+    // отрицательный gapMin означает наложение по времени — гэп в этом случае не рисуем,
+    // наложение уже подсвечено самими строками активностей.
+    const isLast = idx === acts.length-1;
     const next = acts[(idx+1)%acts.length];
     let gapMin = toMin(next.start) - toMin(a.end);
-    if(gapMin < 0) gapMin += 1440;
+    if(isLast && gapMin < 0) gapMin += 1440;
     if(gapMin > 1){
       const gapTr = document.createElement("tr");
       gapTr.className = "gap-row";
@@ -697,10 +728,12 @@ function renderDay(){
   belowWrap.appendChild(freeRow);
 
   const planned = plannedHours(currentDay);
-  const over = planned > 24 + 0.01;
+  const hasOverlap = overlapIds.size > 0;
+  const over = planned > 24 + 0.01 || hasOverlap;
   const total = dayTotalHours(currentDay);
+  const overMsg = hasOverlap ? "  — наложение активностей по времени, проверь план" : "  — перебор по времени, проверь пробелы/наложения";
   const dt = document.getElementById("dayTotal");
-  dt.textContent = `Итого за день: ${total.toFixed(2)} ч из 24` + (over ? "  — перебор по времени, проверь пробелы/наложения" : "  ✓ сходится (остаток зафиксирован в отдых)");
+  dt.textContent = `Итого за день: ${total.toFixed(2)} ч из 24` + (over ? overMsg : "  ✓ сходится (остаток зафиксирован в отдых)");
   dt.className = "day-total " + (over ? "bad":"ok");
 
   // add-form select (Свободное время сюда не попадает — это расчётная величина, не активность)
