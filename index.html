@@ -99,6 +99,52 @@
     display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .add-row select, .add-row input{width:auto;}
   .add-row .name-wrap{flex:1;min-width:140px;}
+  .tab-bar{display:flex;align-items:center;gap:4px;margin-bottom:14px;flex-wrap:wrap;}
+  .tab{
+    display:flex;align-items:center;gap:6px;padding:6px 8px 6px 14px;border-radius:8px 8px 0 0;
+    background:var(--card);border:1px solid var(--border);border-bottom:none;cursor:pointer;
+    font-size:13px;color:var(--muted);
+  }
+  .tab.active{color:var(--text);font-weight:600;background:var(--card);box-shadow:0 -1px 0 var(--accent) inset;}
+  .tab-close{
+    border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:12px;
+    width:18px;height:18px;border-radius:50%;line-height:1;flex-shrink:0;
+  }
+  .tab-close:hover{background:var(--danger-soft);color:var(--danger);}
+  .tab-reopen{
+    border:1px dashed var(--border);background:transparent;color:var(--muted);cursor:pointer;
+    width:26px;height:26px;border-radius:6px;font-size:15px;line-height:1;position:relative;
+  }
+  .tab-reopen:hover{background:var(--accent-soft);color:var(--accent);}
+  .tab-reopen-menu{
+    position:absolute;top:32px;left:0;background:var(--card);border:1px solid var(--border);
+    border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);z-index:50;overflow:hidden;min-width:140px;
+  }
+  .tab-reopen-menu div{padding:8px 12px;font-size:12.5px;cursor:pointer;color:var(--text);}
+  .tab-reopen-menu div:hover{background:var(--accent-soft);}
+  .tab-empty-hint{font-size:13px;color:var(--muted);padding:20px 0;}
+  .ref-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
+  .ref-row{
+    display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 8px;
+    border:1px solid var(--border);border-radius:6px;background:#fbfbfa;
+  }
+  .ref-row .ref-name{flex:1;}
+  .ref-row select{width:auto;flex-shrink:0;}
+  .ref-add-row{display:flex;gap:8px;align-items:center;}
+  .ref-add-row input{flex:1;min-width:140px;}
+  .tpl-select-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;}
+  .tpl-select-row select{flex:1;}
+  .tpl-day-quick{display:flex;gap:8px;margin-bottom:10px;}
+  .tpl-day-checks{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border);}
+  .tpl-day-check{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text);}
+  .tpl-day-group{margin-bottom:14px;}
+  .tpl-day-group h4{font-size:12.5px;margin:0 0 6px;color:var(--muted);font-weight:600;}
+  .tpl-act-row{
+    display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 8px;
+    border:1px solid var(--border);border-radius:6px;background:#fbfbfa;margin-bottom:5px;
+  }
+  .tpl-act-row .tpl-act-name{flex:1;}
+  .tpl-act-row .tpl-act-time{color:var(--muted);font-variant-numeric:tabular-nums;}
   .btn{
     background:var(--accent);color:#fff;border:none;border-radius:6px;
     padding:7px 14px;font-size:13px;cursor:pointer;
@@ -227,38 +273,111 @@
       <button class="btn secondary" id="logoutBtn">Выйти</button>
     </div>
 
-    <div class="card">
-      <h2>Фильтр по активностям</h2>
-      <div class="hint" style="margin-top:0;margin-bottom:10px;">Отметь одну или несколько активностей — ниже появятся дни, в которые они встречаются, а в таблице дня и во вкладках такие строки/дни подсветятся.</div>
-      <div id="filterChips" class="filter-chips"></div>
-      <div id="filterResults" class="filter-results"></div>
-    </div>
+    <div class="tab-bar" id="tabBar"></div>
 
-    <div class="card">
-      <div class="day-total" id="dayTotal"></div>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr><th style="width:5%">✓</th><th style="width:22%">Активность</th><th>Начало</th><th>Конец</th><th style="width:26%">Комментарий</th><th></th></tr>
-          </thead>
-          <tbody id="dayBody"></tbody>
-        </table>
+    <div id="tabPanelMain">
+      <div class="card">
+        <h2>Фильтр по активностям</h2>
+        <div class="hint" style="margin-top:0;margin-bottom:10px;">Отметь одну или несколько активностей — ниже появятся дни, в которые они встречаются, а в таблице дня и во вкладках такие строки/дни подсветятся.</div>
+        <div id="filterChips" class="filter-chips"></div>
+        <div id="filterResults" class="filter-results"></div>
       </div>
-      <div id="belowRows" class="below-wrap"></div>
-      <div class="add-row">
-        <div class="name-wrap">
-          <select id="addSelect"></select>
-          <input type="text" id="addNewName" class="name-input" placeholder="Название новой активности" style="display:none;margin-top:6px;">
+
+      <div class="card">
+        <div class="day-total" id="dayTotal"></div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th style="width:5%">✓</th><th style="width:22%">Активность</th><th>Начало</th><th>Конец</th><th style="width:26%">Комментарий</th><th></th></tr>
+            </thead>
+            <tbody id="dayBody"></tbody>
+          </table>
         </div>
-        <input type="time" id="addStart" value="09:00">
-      <input type="time" id="addEnd" value="10:00">
-      <button class="btn" id="addBtn">Добавить</button>
+        <div id="belowRows" class="below-wrap"></div>
+        <div class="add-row">
+          <div class="name-wrap">
+            <select id="addSelect"></select>
+            <input type="text" id="addNewName" class="name-input" placeholder="Название новой активности" style="display:none;margin-top:6px;">
+          </div>
+          <input type="time" id="addStart" value="09:00">
+        <input type="time" id="addEnd" value="10:00">
+        <button class="btn" id="addBtn">Добавить</button>
+      </div>
+      <div class="hint">Выбери «+ Новая активность», чтобы вписать своё название — оно попадёт в справочник и будет доступно во всех днях. Кнопка «+ задача» рядом с комментарием добавляет к слоту задачу без конкретного времени (просто впиши название, например «Сторис» в «Блог»).</div>
     </div>
-    <div class="hint">Выбери «+ Новая активность», чтобы вписать своё название — оно попадёт в справочник и будет доступно во всех днях. Кнопка «+ задача» рядом с комментарием добавляет к слоту задачу без конкретного времени (просто впиши название, например «Сторис» в «Блог»).</div>
-  </div>
+    </div>
+
+    <div id="tabPanelRefs" style="display:none;">
+      <div class="card">
+        <h2>Категории</h2>
+        <div class="hint" style="margin-top:0;margin-bottom:10px;">Категории используются для группировки в сводке «Итоги по категориям».</div>
+        <div id="categoriesList" class="ref-list"></div>
+        <div class="ref-add-row">
+          <input type="text" id="newCategoryName" class="name-input" placeholder="Новая категория">
+          <button class="btn secondary" id="addCategoryBtn">Добавить</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Активности</h2>
+        <div class="hint" style="margin-top:0;margin-bottom:10px;">Справочник активностей, доступных при добавлении в план дня.</div>
+        <div id="activitiesList" class="ref-list"></div>
+        <div class="ref-add-row">
+          <input type="text" id="newActivityName" class="name-input" placeholder="Новая активность">
+          <button class="btn secondary" id="addActivityBtn">Добавить</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Связь активностей с категориями</h2>
+        <div class="hint" style="margin-top:0;margin-bottom:10px;">Для каждой активности выбери её категорию — это определит, куда её часы попадут в сводке.</div>
+        <div id="linksList" class="ref-list"></div>
+      </div>
+    </div>
+
+    <div id="tabPanelTemplates" style="display:none;">
+      <div class="card">
+        <h2>Шаблоны недели</h2>
+        <div class="hint" style="margin-top:0;margin-bottom:10px;">Шаблон — заготовка плана на неделю. При открытии недели, для которой ещё нет плана, шаблон можно выбрать вместо создания с нуля.</div>
+        <div class="tpl-select-row">
+          <select id="templateSelect"></select>
+          <button class="btn secondary" id="newTemplateBtn" type="button">+ Новый шаблон</button>
+          <button class="del-btn" id="deleteTemplateBtn" type="button" title="Удалить шаблон">✕</button>
+        </div>
+        <div class="ref-add-row" id="newTemplateRow" style="display:none;">
+          <input type="text" id="newTemplateName" class="name-input" placeholder="Название шаблона (например, «Рабочая неделя»)">
+          <button class="btn" id="createTemplateBtn" type="button">Создать</button>
+        </div>
+      </div>
+
+      <div class="card" id="templateEditorCard" style="display:none;">
+        <h2>Дни, куда добавить активность</h2>
+        <div class="tpl-day-quick">
+          <button type="button" class="btn secondary" id="tplEveryDayBtn">Каждый день</button>
+          <button type="button" class="btn secondary" id="tplWeekdaysBtn">Будни (Пн–Пт)</button>
+        </div>
+        <div class="tpl-day-checks" id="tplDayChecks"></div>
+        <div class="add-row">
+          <div class="name-wrap">
+            <select id="tplAddSelect"></select>
+            <input type="text" id="tplAddNewName" class="name-input" placeholder="Название новой активности" style="display:none;margin-top:6px;">
+          </div>
+          <input type="time" id="tplAddStart" value="09:00">
+          <input type="time" id="tplAddEnd" value="10:00">
+          <button class="btn" id="tplAddBtn" type="button">Добавить в выбранные дни</button>
+        </div>
+      </div>
+
+      <div class="card" id="templateContentsCard" style="display:none;">
+        <h2>Содержимое шаблона</h2>
+        <div id="templateContents"></div>
+      </div>
+    </div>
+
+    <div id="tabEmptyHint" class="tab-empty-hint" style="display:none;">Все вкладки скрыты — нажми «+» рядом, чтобы открыть одну из них.</div>
   </div>
 
-  <div class="right">
+  <div class="right" id="rightSidebar">
     <div class="card cal-card cal-card-mini">
       <div class="cal-header">
         <button class="cal-nav" id="calPrevMonth" type="button">‹</button>
@@ -293,6 +412,7 @@
     <div class="modal-actions">
       <button class="btn secondary" id="nwSkipBtn" type="button">Пока не вносить</button>
       <button class="btn secondary" id="nwDuplicateBtn" type="button">Дублировать план последней недели</button>
+      <div id="nwTemplateBtns"></div>
       <button class="btn" id="nwBlankBtn" type="button">Создать план с нуля</button>
     </div>
   </div>
@@ -332,6 +452,21 @@ const DAYS = ["Понедельник","Вторник","Среда","Четве
 // (растёт при добавлении новых активностей; для существующего пользователя перезаписывается
 // значением, загруженным из Firestore — см. loadUserData() ниже)
 let catalog = ["Сон","Работа","Еда","Спорт","Прогулка","Обучение"];
+
+// справочник категорий и связь «активность → категория» — управляются на вкладке
+// «Справочники». Категория у активности определяется по её названию через categoryLinks,
+// а не хранится в каждой отдельной активности. Используется для группировки в сводке
+// «Итоги по категориям» справа.
+let categories = ["Спорт","Еда","База","Обучение"];
+let categoryLinks = {}; // { "Название активности": "Категория" }
+const NO_CATEGORY = "Без категории";
+function categoryOf(name){ return categoryLinks[name] || NO_CATEGORY; }
+
+// шаблоны недели — управляются на вкладке «Шаблоны». Каждый шаблон это заготовка
+// плана на все 7 дней; предлагается при открытии недели, для которой ещё нет плана.
+// { templateId: { name, days: { "Понедельник": {acts:[...]}, ... } } }
+let templates = {};
+let currentTemplateId = null;
 
 function act(name,start,end,comment,subs){ return {id:Math.random().toString(36).slice(2), name, start, end, done:false, comment: comment||"", subtasks: subs||[]}; }
 // задача без конкретного времени, прикреплённая к временному слоту (subtask активности)
@@ -443,7 +578,27 @@ function activateWeek(date, weekKey){
 function openNewWeekPrompt(date, weekKey){
   pendingNewWeek = {date, weekKey};
   document.getElementById("newWeekRange").textContent = fmtWeekRange(mondayOf(date));
+  renderTemplateModalButtons();
   document.getElementById("newWeekModal").style.display = "flex";
+}
+
+// кнопка на каждый сохранённый шаблон — вставляются в попап «план ещё не внесён»
+function renderTemplateModalButtons(){
+  const wrap = document.getElementById("nwTemplateBtns");
+  wrap.innerHTML = "";
+  Object.entries(templates).forEach(([id, tpl])=>{
+    const btn = document.createElement("button");
+    btn.className = "btn secondary"; btn.type = "button";
+    btn.textContent = `Шаблон «${tpl.name}»`;
+    btn.onclick = ()=>{
+      if(!pendingNewWeek) return;
+      const {date, weekKey} = pendingNewWeek;
+      weeks[weekKey] = cloneWeekAsTemplate(tpl.days);
+      closeNewWeekPrompt();
+      activateWeek(date, weekKey);
+    };
+    wrap.appendChild(btn);
+  });
 }
 function closeNewWeekPrompt(){
   pendingNewWeek = null;
@@ -529,6 +684,11 @@ function colorFor(name){
   if(idx<0) idx = 0;
   return PALETTE[idx % PALETTE.length];
 }
+function colorForCategory(cat){
+  let idx = categories.indexOf(cat);
+  if(idx<0) return "#a8a49b"; // «Свободное время» / «Без категории» — нейтральный серый
+  return PALETTE[idx % PALETTE.length];
+}
 
 // обобщённые варианты, принимающие день данных напрямую (для агрегации за месяц/год,
 // когда день может принадлежать не текущей, а любой сохранённой неделе)
@@ -571,7 +731,11 @@ function renderDay(){
     const nameTd = document.createElement("td");
     nameTd.className = "name-cell";
     const sel = document.createElement("select");
-    catalog.filter(c=>c!=="Свободное время").forEach(c=>{
+    const nameOptions = catalog.filter(c=>c!=="Свободное время");
+    // если активность удалили из справочника, но она ещё используется в плане — не даём
+    // её названию молча пропасть из списка
+    if(a.name && !nameOptions.includes(a.name)) nameOptions.push(a.name);
+    nameOptions.forEach(c=>{
       const o=document.createElement("option"); o.value=c; o.textContent=c;
       if(c===a.name) o.selected=true;
       sel.appendChild(o);
@@ -830,8 +994,9 @@ function renderCatalogTotals(){
     const day = weeks[weekKey][dayName];
     day.acts.forEach(a=>{
       const h = duration(a);
-      planTotals[a.name] = (planTotals[a.name]||0) + h;
-      if(a.done) factTotals[a.name] = (factTotals[a.name]||0) + h;
+      const cat = categoryOf(a.name);
+      planTotals[cat] = (planTotals[cat]||0) + h;
+      if(a.done) factTotals[cat] = (factTotals[cat]||0) + h;
     });
     const free = freeHoursOf(day);
     planTotals["Свободное время"] = (planTotals["Свободное время"]||0) + free;
@@ -844,17 +1009,18 @@ function renderCatalogTotals(){
 
   const list = document.getElementById("catList");
   list.innerHTML = "";
-  entries.forEach(([name,planHrs])=>{
-    const factHrs = factTotals[name] || 0;
-    // шкала — по собственному плану активности (100% = её план), а не по доле от дня/недели
+  entries.forEach(([cat,planHrs])=>{
+    const factHrs = factTotals[cat] || 0;
+    // шкала — по собственному плану категории (100% = её план), а не по доле от дня/недели
     const pctDoneOfPlan = planHrs ? (factHrs/planHrs*100) : 0;
+    const color = cat==="Свободное время" ? "#a8a49b" : colorForCategory(cat);
     const row = document.createElement("div");
     row.className = "cat-row";
     row.innerHTML = `
-      <div class="cat-name">${name}</div>
+      <div class="cat-name">${cat}</div>
       <div class="cat-bar-wrap">
-        <div class="cat-bar" style="width:100%;background:${colorFor(name)}"></div>
-        <div class="cat-bar-done" style="width:${pctDoneOfPlan}%;background:${colorFor(name)}"></div>
+        <div class="cat-bar" style="width:100%;background:${color}"></div>
+        <div class="cat-bar-done" style="width:${pctDoneOfPlan}%;background:${color}"></div>
       </div>
       <div class="cat-hrs">план <b>${planHrs.toFixed(2)}ч</b> · факт <b>${factHrs.toFixed(2)}ч</b> (${pctDoneOfPlan.toFixed(0)}%)</div>
     `;
@@ -979,8 +1145,341 @@ function renderAll(){
   renderCatalogTotals();
   renderFilters();
   renderCalendar();
+  renderTabs();
+  renderTabPanels();
   scheduleSave();
 }
+
+// ==================== вкладки (Главная / Справочники) ====================
+const TAB_LABELS = {main: "Главная", refs: "Справочники", templates: "Шаблоны"};
+let openTabs = {main: true, refs: true, templates: true};
+let activeTab = "main";
+
+function renderTabs(){
+  const bar = document.getElementById("tabBar");
+  bar.innerHTML = "";
+  Object.keys(TAB_LABELS).forEach(key=>{
+    if(!openTabs[key]) return;
+    const tab = document.createElement("div");
+    tab.className = "tab" + (activeTab===key ? " active" : "");
+    const label = document.createElement("span");
+    label.textContent = TAB_LABELS[key];
+    tab.appendChild(label);
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "tab-close"; closeBtn.textContent = "✕"; closeBtn.title = "Скрыть вкладку";
+    closeBtn.onclick = (e)=>{ e.stopPropagation(); closeTab(key); };
+    tab.appendChild(closeBtn);
+    tab.onclick = ()=>{ switchTab(key); };
+    bar.appendChild(tab);
+  });
+
+  const anyClosed = Object.values(openTabs).some(v=>!v);
+  if(anyClosed){
+    const reopenWrap = document.createElement("div");
+    reopenWrap.style.position = "relative";
+    const reopenBtn = document.createElement("button");
+    reopenBtn.className = "tab-reopen"; reopenBtn.type="button"; reopenBtn.textContent = "+"; reopenBtn.title = "Открыть скрытую вкладку";
+    reopenBtn.onclick = (e)=>{
+      e.stopPropagation();
+      const existing = reopenWrap.querySelector(".tab-reopen-menu");
+      if(existing){ existing.remove(); return; }
+      const menu = document.createElement("div");
+      menu.className = "tab-reopen-menu";
+      Object.keys(TAB_LABELS).forEach(key=>{
+        if(openTabs[key]) return;
+        const item = document.createElement("div");
+        item.textContent = TAB_LABELS[key];
+        item.onclick = ()=>{ openTabs[key]=true; switchTab(key); };
+        menu.appendChild(item);
+      });
+      reopenWrap.appendChild(menu);
+    };
+    reopenWrap.appendChild(reopenBtn);
+    bar.appendChild(reopenWrap);
+  }
+}
+
+function switchTab(key){
+  activeTab = key;
+  renderTabs();
+  renderTabPanels();
+}
+
+function closeTab(key){
+  openTabs[key] = false;
+  if(activeTab===key){
+    activeTab = Object.keys(TAB_LABELS).find(k=>openTabs[k]) || null;
+  }
+  renderTabs();
+  renderTabPanels();
+}
+
+function renderTabPanels(){
+  const mainPanel = document.getElementById("tabPanelMain");
+  const refsPanel = document.getElementById("tabPanelRefs");
+  const templatesPanel = document.getElementById("tabPanelTemplates");
+  const sidebar = document.getElementById("rightSidebar");
+  const emptyHint = document.getElementById("tabEmptyHint");
+  mainPanel.style.display = activeTab==="main" ? "block" : "none";
+  refsPanel.style.display = activeTab==="refs" ? "block" : "none";
+  templatesPanel.style.display = activeTab==="templates" ? "block" : "none";
+  sidebar.style.display = activeTab==="main" ? "flex" : "none";
+  emptyHint.style.display = activeTab===null ? "block" : "none";
+  if(activeTab==="refs") renderRefs();
+  if(activeTab==="templates") renderTemplatesTab();
+}
+
+// ==================== справочники: категории, активности, их связь ====================
+function renderRefs(){
+  const catList = document.getElementById("categoriesList");
+  catList.innerHTML = "";
+  if(categories.length===0){
+    catList.innerHTML = `<div class="hint" style="margin:0;">Категорий пока нет.</div>`;
+  }
+  categories.forEach(cat=>{
+    const row = document.createElement("div");
+    row.className = "ref-row";
+    const name = document.createElement("span");
+    name.className = "ref-name"; name.textContent = cat;
+    row.appendChild(name);
+    const del = document.createElement("button");
+    del.className = "del-btn"; del.textContent = "✕"; del.title = "Удалить категорию";
+    del.onclick = ()=>{
+      categories = categories.filter(c=>c!==cat);
+      Object.keys(categoryLinks).forEach(n=>{ if(categoryLinks[n]===cat) delete categoryLinks[n]; });
+      renderAll();
+    };
+    row.appendChild(del);
+    catList.appendChild(row);
+  });
+
+  const actList = document.getElementById("activitiesList");
+  actList.innerHTML = "";
+  catalog.filter(n=>n!=="Свободное время").forEach(name=>{
+    const row = document.createElement("div");
+    row.className = "ref-row";
+    const label = document.createElement("span");
+    label.className = "ref-name"; label.textContent = name;
+    row.appendChild(label);
+    const del = document.createElement("button");
+    del.className = "del-btn"; del.textContent = "✕"; del.title = "Удалить активность из справочника";
+    del.onclick = ()=>{
+      catalog = catalog.filter(c=>c!==name);
+      delete categoryLinks[name];
+      renderAll();
+    };
+    row.appendChild(del);
+    actList.appendChild(row);
+  });
+
+  const linksList = document.getElementById("linksList");
+  linksList.innerHTML = "";
+  catalog.filter(n=>n!=="Свободное время").forEach(name=>{
+    const row = document.createElement("div");
+    row.className = "ref-row";
+    const label = document.createElement("span");
+    label.className = "ref-name"; label.textContent = name;
+    row.appendChild(label);
+    const sel = document.createElement("select");
+    const blank = document.createElement("option");
+    blank.value=""; blank.textContent="— без категории";
+    sel.appendChild(blank);
+    categories.forEach(cat=>{
+      const o=document.createElement("option"); o.value=cat; o.textContent=cat;
+      if(categoryLinks[name]===cat) o.selected=true;
+      sel.appendChild(o);
+    });
+    sel.onchange = ()=>{
+      if(sel.value) categoryLinks[name]=sel.value;
+      else delete categoryLinks[name];
+      scheduleSave();
+    };
+    row.appendChild(sel);
+    linksList.appendChild(row);
+  });
+}
+
+document.getElementById("addCategoryBtn").addEventListener("click", ()=>{
+  const inp = document.getElementById("newCategoryName");
+  const name = inp.value.trim();
+  if(!name){ showTopToast("Впиши название категории."); return; }
+  if(categories.includes(name)){ showTopToast("Такая категория уже есть."); return; }
+  categories.push(name);
+  inp.value = "";
+  renderAll();
+});
+document.getElementById("addActivityBtn").addEventListener("click", ()=>{
+  const inp = document.getElementById("newActivityName");
+  const name = inp.value.trim();
+  if(!name){ showTopToast("Впиши название активности."); return; }
+  if(catalog.includes(name)){ showTopToast("Такая активность уже есть."); return; }
+  catalog.push(name);
+  inp.value = "";
+  renderAll();
+});
+
+// ==================== шаблоны недели ====================
+// дни, в которые сейчас добавится следующая активность шаблона — сохраняется между
+// повторными добавлениями (например, «пн-пт» выбрано один раз для нескольких активностей подряд)
+let tplSelectedDays = new Set();
+
+function renderTemplatesTab(){
+  const ids = Object.keys(templates);
+  if(!currentTemplateId || !templates[currentTemplateId]){
+    currentTemplateId = ids[0] || null;
+  }
+
+  const select = document.getElementById("templateSelect");
+  select.innerHTML = "";
+  if(ids.length===0){
+    const o = document.createElement("option");
+    o.value=""; o.textContent="Шаблонов пока нет";
+    select.appendChild(o);
+  } else {
+    ids.forEach(id=>{
+      const o = document.createElement("option");
+      o.value=id; o.textContent=templates[id].name;
+      if(id===currentTemplateId) o.selected=true;
+      select.appendChild(o);
+    });
+  }
+  document.getElementById("deleteTemplateBtn").style.display = currentTemplateId ? "inline-flex" : "none";
+
+  const editorCard = document.getElementById("templateEditorCard");
+  const contentsCard = document.getElementById("templateContentsCard");
+  editorCard.style.display = currentTemplateId ? "block" : "none";
+  contentsCard.style.display = currentTemplateId ? "block" : "none";
+  if(!currentTemplateId) return;
+
+  renderTplDayChecks();
+
+  const addSel = document.getElementById("tplAddSelect");
+  addSel.innerHTML = "";
+  catalog.filter(c=>c!=="Свободное время").forEach(c=>{
+    const o=document.createElement("option"); o.value=c; o.textContent=c;
+    addSel.appendChild(o);
+  });
+  const newOpt = document.createElement("option");
+  newOpt.value="__new__"; newOpt.textContent="+ Новая активность...";
+  addSel.appendChild(newOpt);
+
+  const contents = document.getElementById("templateContents");
+  contents.innerHTML = "";
+  const tpl = templates[currentTemplateId];
+  const hasAny = DAYS.some(d=>(tpl.days[d].acts||[]).length>0);
+  if(!hasAny){
+    contents.innerHTML = `<div class="hint" style="margin:0;">В шаблоне пока нет активностей — добавь их выше.</div>`;
+    return;
+  }
+  DAYS.forEach(d=>{
+    const acts = tpl.days[d].acts||[];
+    if(acts.length===0) return;
+    const group = document.createElement("div");
+    group.className = "tpl-day-group";
+    const h4 = document.createElement("h4");
+    h4.textContent = d;
+    group.appendChild(h4);
+    [...acts].sort((a,b)=>sortKey(a)-sortKey(b)).forEach(a=>{
+      const row = document.createElement("div");
+      row.className = "tpl-act-row";
+      row.innerHTML = `<span class="tpl-act-name">${a.name}</span><span class="tpl-act-time">${a.start}–${a.end}</span>`;
+      const del = document.createElement("button");
+      del.className="del-btn"; del.textContent="✕"; del.title="Удалить из шаблона";
+      del.onclick = ()=>{
+        tpl.days[d].acts = tpl.days[d].acts.filter(x=>x.id!==a.id);
+        renderAll();
+      };
+      row.appendChild(del);
+      group.appendChild(row);
+    });
+    contents.appendChild(group);
+  });
+}
+
+function renderTplDayChecks(){
+  const wrap = document.getElementById("tplDayChecks");
+  wrap.innerHTML = "";
+  DAYS.forEach(d=>{
+    const label = document.createElement("label");
+    label.className = "tpl-day-check";
+    const cb = document.createElement("input");
+    cb.type="checkbox"; cb.checked = tplSelectedDays.has(d);
+    cb.onchange = ()=>{
+      if(cb.checked) tplSelectedDays.add(d); else tplSelectedDays.delete(d);
+    };
+    label.appendChild(cb);
+    const span = document.createElement("span");
+    span.textContent = WEEKDAY_SHORT[DAYS.indexOf(d)];
+    label.appendChild(span);
+    wrap.appendChild(label);
+  });
+}
+
+document.getElementById("tplEveryDayBtn").addEventListener("click", ()=>{
+  tplSelectedDays = new Set(DAYS);
+  renderTplDayChecks();
+});
+document.getElementById("tplWeekdaysBtn").addEventListener("click", ()=>{
+  tplSelectedDays = new Set(["Понедельник","Вторник","Среда","Четверг","Пятница"]);
+  renderTplDayChecks();
+});
+
+document.getElementById("newTemplateBtn").addEventListener("click", ()=>{
+  const row = document.getElementById("newTemplateRow");
+  row.style.display = row.style.display==="none" ? "flex" : "none";
+});
+document.getElementById("createTemplateBtn").addEventListener("click", ()=>{
+  const inp = document.getElementById("newTemplateName");
+  const name = inp.value.trim();
+  if(!name){ showTopToast("Впиши название шаблона."); return; }
+  if(Object.values(templates).some(t=>t.name===name)){ showTopToast("Шаблон с таким названием уже есть."); return; }
+  const id = Math.random().toString(36).slice(2);
+  templates[id] = {name, days: blankWeekTemplate()};
+  currentTemplateId = id;
+  inp.value = "";
+  document.getElementById("newTemplateRow").style.display = "none";
+  tplSelectedDays = new Set();
+  renderAll();
+});
+document.getElementById("templateSelect").addEventListener("change", (e)=>{
+  currentTemplateId = e.target.value || null;
+  tplSelectedDays = new Set();
+  renderTemplatesTab();
+});
+document.getElementById("deleteTemplateBtn").addEventListener("click", ()=>{
+  if(!currentTemplateId) return;
+  delete templates[currentTemplateId];
+  currentTemplateId = null;
+  renderAll();
+});
+
+document.getElementById("tplAddSelect").addEventListener("change", (e)=>{
+  document.getElementById("tplAddNewName").style.display = e.target.value==="__new__" ? "block":"none";
+});
+document.getElementById("tplAddBtn").addEventListener("click", ()=>{
+  if(!currentTemplateId) return;
+  if(tplSelectedDays.size===0){ showTopToast("Выбери хотя бы один день."); return; }
+  const sel = document.getElementById("tplAddSelect");
+  let name = sel.value;
+  if(name==="__new__"){
+    const newName = document.getElementById("tplAddNewName").value.trim();
+    if(!newName){ showTopToast("Впиши название новой активности."); return; }
+    name = newName;
+    if(!catalog.includes(name)) catalog.push(name);
+  }
+  const start = document.getElementById("tplAddStart").value;
+  const end = document.getElementById("tplAddEnd").value;
+  if(!isValidTimeRange(start, end)){
+    showTopToast("Конец активности не может быть раньше начала.");
+    return;
+  }
+  const tpl = templates[currentTemplateId];
+  tplSelectedDays.forEach(d=>{
+    tpl.days[d].acts.push(act(name,start,end));
+  });
+  document.getElementById("tplAddNewName").value="";
+  renderAll();
+});
 
 document.getElementById("calPrevMonth").addEventListener("click", ()=>{
   calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()-1, 1);
@@ -1085,7 +1584,7 @@ async function saveNow(){
   if(!currentUser) return;
   const uid = currentUser.uid;
   try{
-    await setDoc(userMetaDoc(uid), {catalog, currentWeekKey, currentDay, updatedAt: serverTimestamp()}, {merge:true});
+    await setDoc(userMetaDoc(uid), {catalog, categories, categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()}, {merge:true});
     await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
     setSaveStatus("saved");
   }catch(err){
@@ -1104,7 +1603,7 @@ async function initFreshUserData(uid){
   week = weeks[currentWeekKey];
   currentDay = DAYS[(_today0.getDay()+6)%7];
   calendarViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
-  await setDoc(userMetaDoc(uid), {catalog, currentWeekKey, currentDay, updatedAt: serverTimestamp()});
+  await setDoc(userMetaDoc(uid), {catalog, categories, categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()});
   await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
 }
 
@@ -1117,6 +1616,9 @@ async function loadUserData(uid){
   }
   const meta = metaSnap.data();
   catalog = meta.catalog && meta.catalog.length ? meta.catalog : catalog;
+  categories = meta.categories && meta.categories.length ? meta.categories : categories;
+  categoryLinks = meta.categoryLinks || {};
+  templates = meta.templates || {};
 
   weeks = {};
   const weeksSnap = await getDocs(userWeeksCol(uid));
