@@ -472,7 +472,7 @@ function act(name,start,end,comment,subs){ return {id:Math.random().toString(36)
 // задача без конкретного времени, прикреплённая к временному слоту (subtask активности)
 function subtask(name,comment){ return {id:Math.random().toString(36).slice(2), name, done:false, comment: comment||""}; }
 
-// Свободное время не хранится — оно считается автоматически как остаток суток
+// Отдых не хранится — он считается автоматически как остаток суток
 // после активностей (см. freeHours(d) ниже) и пересчитывается при любом
 // добавлении/удалении/изменении активностей.
 
@@ -620,7 +620,7 @@ function goToToday(){ goToDate(new Date()); }
 function daysContaining(name){
   return DAYS.filter(d=>{
     const day = week[d];
-    if(name==="Свободное время") return freeHours(d)>0;
+    if(name==="Отдых") return freeHours(d)>0;
     return day.acts.some(a=>a.name===name || (a.subtasks && a.subtasks.some(s=>s.name===name)));
   });
 }
@@ -686,7 +686,7 @@ function colorFor(name){
 }
 function colorForCategory(cat){
   let idx = categories.indexOf(cat);
-  if(idx<0) return "#a8a49b"; // «Свободное время» / «Без категории» — нейтральный серый
+  if(idx<0) return "#a8a49b"; // «Отдых» / «Без категории» — нейтральный серый
   return PALETTE[idx % PALETTE.length];
 }
 
@@ -731,7 +731,7 @@ function renderDay(){
     const nameTd = document.createElement("td");
     nameTd.className = "name-cell";
     const sel = document.createElement("select");
-    const nameOptions = catalog.filter(c=>c!=="Свободное время");
+    const nameOptions = catalog.filter(c=>c!=="Отдых");
     // если активность удалили из справочника, но она ещё используется в плане — не даём
     // её названию молча пропасть из списка
     if(a.name && !nameOptions.includes(a.name)) nameOptions.push(a.name);
@@ -871,13 +871,13 @@ function renderDay(){
       const gapTd = document.createElement("td");
       gapTd.colSpan = 6;
       const hrs = gapMin/60;
-      gapTd.innerHTML = `<div class="gap-bar">Свободное время · ${a.end}–${next.start} (${hrs.toFixed(2)}ч)</div>`;
+      gapTd.innerHTML = `<div class="gap-bar">Отдых · ${a.end}–${next.start} (${hrs.toFixed(2)}ч)</div>`;
       gapTr.appendChild(gapTd);
       body.appendChild(gapTr);
     }
   });
 
-  // Внизу оставляем только Свободное время — считается автоматически (остаток суток)
+  // Внизу оставляем только Отдых — считается автоматически (остаток суток)
   const belowWrap = document.getElementById("belowRows");
   belowWrap.innerHTML = "";
 
@@ -885,7 +885,7 @@ function renderDay(){
   const freeRow = document.createElement("div");
   freeRow.className = "below-row";
   freeRow.innerHTML = `
-    <span class="below-name">Свободное время</span>
+    <span class="below-name">Отдых</span>
     <input type="number" class="below-input" value="${free.toFixed(2)}" disabled style="opacity:.65;cursor:not-allowed;">
     <span class="below-unit">ч за день (авто, из остатка суток)</span>
   `;
@@ -900,10 +900,10 @@ function renderDay(){
   dt.textContent = `Итого за день: ${total.toFixed(2)} ч из 24` + (over ? overMsg : "  ✓ сходится (остаток зафиксирован в отдых)");
   dt.className = "day-total " + (over ? "bad":"ok");
 
-  // add-form select (Свободное время сюда не попадает — это расчётная величина, не активность)
+  // add-form select (Отдых сюда не попадает — это расчётная величина, не активность)
   const addSel = document.getElementById("addSelect");
   addSel.innerHTML = "";
-  catalog.filter(c=>c!=="Свободное время").forEach(c=>{
+  catalog.filter(c=>c!=="Отдых").forEach(c=>{
     const o=document.createElement("option"); o.value=c; o.textContent=c;
     addSel.appendChild(o);
   });
@@ -999,9 +999,9 @@ function renderCatalogTotals(){
       if(a.done) factTotals[cat] = (factTotals[cat]||0) + h;
     });
     const free = freeHoursOf(day);
-    planTotals["Свободное время"] = (planTotals["Свободное время"]||0) + free;
-    // Свободное время не отмечается галочкой — считаем его выполненным как есть (фон)
-    factTotals["Свободное время"] = (factTotals["Свободное время"]||0) + free;
+    planTotals["Отдых"] = (planTotals["Отдых"]||0) + free;
+    // Отдых не отмечается галочкой — считаем его выполненным как есть (фон)
+    factTotals["Отдых"] = (factTotals["Отдых"]||0) + free;
   });
   const entries = Object.entries(planTotals).sort((a,b)=>b[1]-a[1]);
   const grandPlan = entries.reduce((s,[,v])=>s+v,0);
@@ -1013,7 +1013,7 @@ function renderCatalogTotals(){
     const factHrs = factTotals[cat] || 0;
     // шкала — по собственному плану категории (100% = её план), а не по доле от дня/недели
     const pctDoneOfPlan = planHrs ? (factHrs/planHrs*100) : 0;
-    const color = cat==="Свободное время" ? "#a8a49b" : colorForCategory(cat);
+    const color = cat==="Отдых" ? "#a8a49b" : colorForCategory(cat);
     const row = document.createElement("div");
     row.className = "cat-row";
     row.innerHTML = `
@@ -1046,10 +1046,10 @@ function renderCatalogTotals(){
 }
 
 function renderFilters(){
-  // Свободное время не показывается в фильтре — это не отдельная строка на таймлайне,
+  // Отдых не показывается в фильтре — это не отдельная строка на таймлайне,
   // подсвечивать в таблице всё равно нечего.
   // Из остального — только активности, которые встречаются хотя бы раз за неделю.
-  const usedNames = catalog.filter(name=>name!=="Свободное время" && daysContaining(name).length>0);
+  const usedNames = catalog.filter(name=>name!=="Отдых" && daysContaining(name).length>0);
   // если выбранная активность больше нигде не встречается — снимаем её из фильтра
   [...selectedFilters].forEach(name=>{ if(!usedNames.includes(name)) selectedFilters.delete(name); });
 
@@ -1255,7 +1255,7 @@ function renderRefs(){
 
   const actList = document.getElementById("activitiesList");
   actList.innerHTML = "";
-  catalog.filter(n=>n!=="Свободное время").forEach(name=>{
+  catalog.filter(n=>n!=="Отдых").forEach(name=>{
     const row = document.createElement("div");
     row.className = "ref-row";
     const label = document.createElement("span");
@@ -1274,7 +1274,7 @@ function renderRefs(){
 
   const linksList = document.getElementById("linksList");
   linksList.innerHTML = "";
-  catalog.filter(n=>n!=="Свободное время").forEach(name=>{
+  catalog.filter(n=>n!=="Отдых").forEach(name=>{
     const row = document.createElement("div");
     row.className = "ref-row";
     const label = document.createElement("span");
@@ -1355,7 +1355,7 @@ function renderTemplatesTab(){
 
   const addSel = document.getElementById("tplAddSelect");
   addSel.innerHTML = "";
-  catalog.filter(c=>c!=="Свободное время").forEach(c=>{
+  catalog.filter(c=>c!=="Отдых").forEach(c=>{
     const o=document.createElement("option"); o.value=c; o.textContent=c;
     addSel.appendChild(o);
   });
