@@ -159,6 +159,15 @@
   .cat-bar-done{height:100%;border-radius:4px;position:absolute;top:0;left:0;}
   .cat-hrs{width:150px;flex-shrink:0;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px;line-height:1.3;}
   .cat-hrs b{color:var(--text);}
+  .cat-row.expandable{cursor:pointer;}
+  .cat-row.expandable:hover .cat-name{color:var(--accent);}
+  .cat-chevron{display:inline-block;width:9px;margin-right:2px;color:var(--muted);font-size:9px;transition:transform .15s;}
+  .cat-row.open .cat-chevron{transform:rotate(90deg);}
+  .cat-sub-list{margin:2px 0 10px;padding-left:16px;display:flex;flex-direction:column;gap:6px;}
+  .cat-sub-row{display:flex;align-items:center;gap:8px;font-size:11.5px;}
+  .cat-sub-row .cat-sub-name{width:104px;flex-shrink:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cat-sub-row .cat-bar-wrap{height:9px;}
+  .cat-sub-row .cat-hrs{width:150px;font-size:10.5px;}
   .legend{display:flex;gap:16px;font-size:11.5px;color:var(--muted);margin-bottom:10px;}
   .legend span{display:inline-flex;align-items:center;gap:5px;}
   .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;}
@@ -467,6 +476,10 @@ function categoryOf(name){ return categoryLinks[name] || NO_CATEGORY; }
 // { templateId: { name, days: { "Понедельник": {acts:[...]}, ... } } }
 let templates = {};
 let currentTemplateId = null;
+
+// какие строки сводки «Итоги по категориям» сейчас развёрнуты (показывают разбивку
+// по активностям внутри категории) — состояние чисто визуальное, не сохраняется
+let expandedCategories = new Set();
 
 function act(name,start,end,comment,subs){ return {id:Math.random().toString(36).slice(2), name, start, end, done:false, comment: comment||"", subtasks: subs||[]}; }
 // задача без конкретного времени, прикреплённая к временному слоту (subtask активности)
@@ -990,6 +1003,8 @@ function renderCatalogTotals(){
   const scopeList = scopeEntries();
   const planTotals = {};
   const factTotals = {};
+  const actPlanTotals = {};   // { category: { activityName: hrs } }
+  const actFactTotals = {};
   scopeList.forEach(({weekKey, dayName})=>{
     const day = weeks[weekKey][dayName];
     day.acts.forEach(a=>{
@@ -997,6 +1012,12 @@ function renderCatalogTotals(){
       const cat = categoryOf(a.name);
       planTotals[cat] = (planTotals[cat]||0) + h;
       if(a.done) factTotals[cat] = (factTotals[cat]||0) + h;
+      actPlanTotals[cat] = actPlanTotals[cat] || {};
+      actPlanTotals[cat][a.name] = (actPlanTotals[cat][a.name]||0) + h;
+      if(a.done){
+        actFactTotals[cat] = actFactTotals[cat] || {};
+        actFactTotals[cat][a.name] = (actFactTotals[cat][a.name]||0) + h;
+      }
     });
     const free = freeHoursOf(day);
     planTotals["Отдых"] = (planTotals["Отдых"]||0) + free;
@@ -1014,17 +1035,49 @@ function renderCatalogTotals(){
     // шкала — по собственному плану категории (100% = её план), а не по доле от дня/недели
     const pctDoneOfPlan = planHrs ? (factHrs/planHrs*100) : 0;
     const color = cat==="Отдых" ? "#a8a49b" : colorForCategory(cat);
+    // «Отдых» не состоит из отдельных активностей — раскрывать нечего
+    const canExpand = cat!=="Отдых" && Object.keys(actPlanTotals[cat]||{}).length>0;
+    const isOpen = canExpand && expandedCategories.has(cat);
     const row = document.createElement("div");
-    row.className = "cat-row";
+    row.className = "cat-row" + (canExpand ? " expandable" : "") + (isOpen ? " open" : "");
     row.innerHTML = `
-      <div class="cat-name">${cat}</div>
+      <div class="cat-name">${canExpand ? '<span class="cat-chevron">▶</span>' : ""}${cat}</div>
       <div class="cat-bar-wrap">
         <div class="cat-bar" style="width:100%;background:${color}"></div>
         <div class="cat-bar-done" style="width:${pctDoneOfPlan}%;background:${color}"></div>
       </div>
       <div class="cat-hrs">план <b>${planHrs.toFixed(2)}ч</b> · факт <b>${factHrs.toFixed(2)}ч</b> (${pctDoneOfPlan.toFixed(0)}%)</div>
     `;
+    if(canExpand){
+      row.addEventListener("click", ()=>{
+        if(expandedCategories.has(cat)) expandedCategories.delete(cat);
+        else expandedCategories.add(cat);
+        renderCatalogTotals();
+      });
+    }
     list.appendChild(row);
+
+    if(isOpen){
+      const subList = document.createElement("div");
+      subList.className = "cat-sub-list";
+      const subEntries = Object.entries(actPlanTotals[cat]).sort((a,b)=>b[1]-a[1]);
+      subEntries.forEach(([name, subPlan])=>{
+        const subFact = (actFactTotals[cat] && actFactTotals[cat][name]) || 0;
+        const subPct = subPlan ? (subFact/subPlan*100) : 0;
+        const subRow = document.createElement("div");
+        subRow.className = "cat-sub-row";
+        subRow.innerHTML = `
+          <div class="cat-sub-name">${name}</div>
+          <div class="cat-bar-wrap">
+            <div class="cat-bar" style="width:100%;background:${colorFor(name)}"></div>
+            <div class="cat-bar-done" style="width:${subPct}%;background:${colorFor(name)}"></div>
+          </div>
+          <div class="cat-hrs">план <b>${subPlan.toFixed(2)}ч</b> · факт <b>${subFact.toFixed(2)}ч</b> (${subPct.toFixed(0)}%)</div>
+        `;
+        subList.appendChild(subRow);
+      });
+      list.appendChild(subList);
+    }
   });
 
   const capacity = scopeList.length * 24;
