@@ -6,16 +6,18 @@
 <title>Планировщик недели</title>
 <style>
   :root{
-    --bg:#f7f7f5;
-    --card:#ffffff;
-    --border:#e4e2dd;
-    --text:#2b2b28;
-    --muted:#83807a;
-    --accent:#4f6f6a;
-    --accent-soft:#e5edec;
-    --danger:#b5544a;
-    --danger-soft:#f6e9e7;
-    --radius:10px;
+    --bg:#f8f1e6;
+    --card:#fffbf4;
+    --border:#e9dcc7;
+    --text:#443a30;
+    --muted:#9b8d7b;
+    --accent:#84a888;
+    --accent-soft:#e5ede2;
+    --pink:#e6a8bb;
+    --pink-soft:#fbe8ee;
+    --danger:#c76b62;
+    --danger-soft:#f8e2dd;
+    --radius:14px;
   }
   *{box-sizing:border-box;}
   body{
@@ -247,6 +249,45 @@
     background:var(--danger);color:#fff;font-size:13px;padding:10px 14px;border-radius:8px;
     box-shadow:0 4px 14px rgba(0,0,0,.18);max-width:320px;display:none;
   }
+
+  /* ---- Дневник ---- */
+  .diary-layout{display:flex;gap:24px;flex-wrap:wrap;}
+  .diary-cal-wrap{flex:1;min-width:260px;}
+  .diary-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:10px;}
+  .diary-cal-grid .cal-dow{font-size:11px;}
+  .diary-cal-grid .cal-day{
+    position:relative;font-size:13px;padding:9px 0;border-radius:9px;
+  }
+  .diary-cal-grid .cal-day.selected .diary-dot{background:#fff;}
+  .diary-dot{
+    position:absolute;bottom:4px;left:50%;transform:translateX(-50%);
+    width:5px;height:5px;border-radius:50%;background:var(--pink);
+  }
+  .diary-entry-wrap{flex:1.3;min-width:280px;}
+  .diary-date-label{font-size:15px;font-weight:600;margin-bottom:10px;color:var(--text);}
+  .diary-textarea{
+    width:100%;min-height:170px;border:1px solid var(--border);border-radius:var(--radius);
+    padding:12px 14px;font-size:14px;font-family:inherit;background:#fffdf9;color:var(--text);
+    resize:vertical;line-height:1.55;
+  }
+  .diary-textarea:focus{outline:none;border-color:var(--pink);}
+  .diary-photos-wrap{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}
+  .diary-photo-thumb{
+    position:relative;width:92px;height:92px;border-radius:10px;overflow:hidden;
+    border:1px solid var(--border);
+  }
+  .diary-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}
+  .diary-photo-del{
+    position:absolute;top:3px;right:3px;border:none;background:rgba(40,25,25,.55);
+    color:#fff;width:20px;height:20px;border-radius:50%;font-size:11px;cursor:pointer;line-height:1;
+  }
+  .diary-add-photo-tile{
+    width:92px;height:92px;border-radius:10px;border:1.5px dashed var(--border);
+    display:flex;align-items:center;justify-content:center;color:var(--muted);
+    cursor:pointer;font-size:24px;background:#fbf5ec;flex-shrink:0;
+  }
+  .diary-add-photo-tile:hover{border-color:var(--pink);color:var(--pink);}
+  .photo-lightbox img{max-width:90vw;max-height:85vh;border-radius:12px;box-shadow:0 16px 44px rgba(0,0,0,.35);}
 </style>
 </head>
 <body>
@@ -314,6 +355,29 @@
       </div>
       <div class="hint">Выбери «+ Новая активность», чтобы вписать своё название — оно попадёт в справочник и будет доступно во всех днях. Кнопка «+ задача» рядом с комментарием добавляет к слоту задачу без конкретного времени (просто впиши название, например «Сторис» в «Блог»).</div>
     </div>
+    </div>
+
+    <div id="tabPanelDiary" style="display:none;">
+      <div class="card">
+        <h2>Дневник</h2>
+        <div class="hint" style="margin-top:0;margin-bottom:14px;">Выбери день в календаре и запиши, как он прошёл — можно прикрепить до 6 фото. Розовая точка под числом — день, за который уже есть запись.</div>
+        <div class="diary-layout">
+          <div class="diary-cal-wrap">
+            <div class="cal-header">
+              <button class="cal-nav" id="diaryCalPrevMonth" type="button">‹</button>
+              <span id="diaryCalMonthLabel"></span>
+              <button class="cal-nav" id="diaryCalNextMonth" type="button">›</button>
+            </div>
+            <div class="diary-cal-grid" id="diaryCalGrid"></div>
+            <button class="btn secondary" id="diaryCalTodayBtn" style="width:100%;margin-top:10px;" type="button">Сегодня</button>
+          </div>
+          <div class="diary-entry-wrap">
+            <div class="diary-date-label" id="diarySelectedDateLabel"></div>
+            <textarea id="diaryText" class="diary-textarea" placeholder="Как прошёл день?"></textarea>
+            <div class="diary-photos-wrap" id="diaryPhotos"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="tabPanelRefs" style="display:none;">
@@ -425,6 +489,10 @@
       <button class="btn" id="nwBlankBtn" type="button">Создать план с нуля</button>
     </div>
   </div>
+</div>
+
+<div class="modal-overlay photo-lightbox" id="photoLightbox" style="display:none;">
+  <img id="photoLightboxImg" alt="Фото из дневника">
 </div>
 
 <script type="module">
@@ -1204,8 +1272,8 @@ function renderAll(){
 }
 
 // ==================== вкладки (Главная / Справочники) ====================
-const TAB_LABELS = {main: "Главная", refs: "Справочники", templates: "Шаблоны"};
-let openTabs = {main: true, refs: true, templates: true};
+const TAB_LABELS = {main: "Главная", diary: "Дневник", refs: "Справочники", templates: "Шаблоны"};
+let openTabs = {main: true, diary: true, refs: true, templates: true};
 let activeTab = "main";
 
 function renderTabs(){
@@ -1269,17 +1337,179 @@ function closeTab(key){
 
 function renderTabPanels(){
   const mainPanel = document.getElementById("tabPanelMain");
+  const diaryPanel = document.getElementById("tabPanelDiary");
   const refsPanel = document.getElementById("tabPanelRefs");
   const templatesPanel = document.getElementById("tabPanelTemplates");
   const sidebar = document.getElementById("rightSidebar");
   const emptyHint = document.getElementById("tabEmptyHint");
   mainPanel.style.display = activeTab==="main" ? "block" : "none";
+  diaryPanel.style.display = activeTab==="diary" ? "block" : "none";
   refsPanel.style.display = activeTab==="refs" ? "block" : "none";
   templatesPanel.style.display = activeTab==="templates" ? "block" : "none";
   sidebar.style.display = activeTab==="main" ? "flex" : "none";
   emptyHint.style.display = activeTab===null ? "block" : "none";
+  if(activeTab==="diary") renderDiaryTab();
   if(activeTab==="refs") renderRefs();
   if(activeTab==="templates") renderTemplatesTab();
+}
+
+// ==================== дневник (календарь + запись + фото) ====================
+// diary — { "YYYY-MM-DD": { text: "", photos: ["data:image/jpeg;base64,...", ...] } },
+// хранится отдельно от weeks{}, привязано к конкретной календарной дате, а не к дню недели шаблона.
+let diary = {};
+let diarySelectedDateISO = isoDate(_today0);
+let diaryViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
+const DIARY_MAX_PHOTOS = 6;
+
+function getDiaryEntry(dateISO){
+  if(!diary[dateISO]) diary[dateISO] = {text:"", photos:[]};
+  return diary[dateISO];
+}
+function diaryHasContent(dateISO){
+  const e = diary[dateISO];
+  return !!e && ((e.text||"").trim().length>0 || (e.photos||[]).length>0);
+}
+
+function selectDiaryDate(dateISO){
+  flushDiarySaveIfPending();
+  diarySelectedDateISO = dateISO;
+  const d = parseISODate(dateISO);
+  diaryViewMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+  renderDiaryTab();
+}
+
+function renderDiaryCalendar(){
+  const label = document.getElementById("diaryCalMonthLabel");
+  label.textContent = MONTHS_FULL[diaryViewMonth.getMonth()] + " " + diaryViewMonth.getFullYear();
+
+  const grid = document.getElementById("diaryCalGrid");
+  grid.innerHTML = "";
+  WEEKDAY_SHORT.forEach(w=>{
+    const el = document.createElement("div");
+    el.className = "cal-dow"; el.textContent = w;
+    grid.appendChild(el);
+  });
+
+  const monthStart = new Date(diaryViewMonth.getFullYear(), diaryViewMonth.getMonth(), 1);
+  const gridStart = mondayOf(monthStart);
+  const realToday = new Date();
+
+  for(let row=0; row<6; row++){
+    const rowStart = addDays(gridStart, row*7);
+    for(let col=0; col<7; col++){
+      const date = addDays(rowStart, col);
+      const dateISO = isoDate(date);
+      const cell = document.createElement("div");
+      let cls = "cal-day";
+      if(date.getMonth()!==diaryViewMonth.getMonth()) cls += " other-month";
+      if(sameDate(date, realToday)) cls += " today";
+      if(dateISO===diarySelectedDateISO) cls += " selected";
+      cell.className = cls;
+      cell.innerHTML = String(date.getDate()) + (diaryHasContent(dateISO) ? '<span class="diary-dot"></span>' : "");
+      cell.onclick = ()=>{ selectDiaryDate(dateISO); };
+      grid.appendChild(cell);
+    }
+  }
+}
+
+function handleDiaryPhotoInputChange(e){
+  const files = Array.from(e.target.files || []);
+  e.target.value = "";
+  if(!files.length) return;
+  const dateISO = diarySelectedDateISO;
+  (async ()=>{
+    const entry = getDiaryEntry(dateISO);
+    for(const file of files){
+      if(!file.type || !file.type.startsWith("image/")) continue;
+      if(entry.photos.length >= DIARY_MAX_PHOTOS){
+        showTopToast(`Максимум ${DIARY_MAX_PHOTOS} фото на день.`);
+        break;
+      }
+      try{
+        const dataUrl = await compressImageFile(file);
+        entry.photos.push(dataUrl);
+      }catch(err){
+        console.error("Не удалось обработать фото:", err);
+        showTopToast("Не удалось обработать это фото.");
+      }
+    }
+    if(dateISO===diarySelectedDateISO) renderDiaryTab();
+    scheduleDiarySave(dateISO);
+  })();
+}
+
+function compressImageFile(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxDim = 1280;
+        let w = img.width, h = img.height;
+        if(w>maxDim || h>maxDim){
+          if(w>=h){ h = Math.round(h*maxDim/w); w = maxDim; }
+          else { w = Math.round(w*maxDim/h); h = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      };
+      img.onerror = ()=>reject(new Error("image load failed"));
+      img.src = reader.result;
+    };
+    reader.onerror = ()=>reject(new Error("file read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function openPhotoLightbox(src){
+  document.getElementById("photoLightboxImg").src = src;
+  document.getElementById("photoLightbox").style.display = "flex";
+}
+
+function renderDiaryTab(){
+  renderDiaryCalendar();
+  const entry = getDiaryEntry(diarySelectedDateISO);
+  const d = parseISODate(diarySelectedDateISO);
+  document.getElementById("diarySelectedDateLabel").textContent =
+    d.getDate() + " " + MONTHS_FULL[d.getMonth()] + " " + d.getFullYear() + ", " + DAYS[(d.getDay()+6)%7].toLowerCase();
+
+  const textarea = document.getElementById("diaryText");
+  if(document.activeElement !== textarea) textarea.value = entry.text || "";
+
+  const photosWrap = document.getElementById("diaryPhotos");
+  photosWrap.innerHTML = "";
+  (entry.photos||[]).forEach((src, idx)=>{
+    const thumb = document.createElement("div");
+    thumb.className = "diary-photo-thumb";
+    const img = document.createElement("img");
+    img.src = src;
+    img.onclick = ()=>{ openPhotoLightbox(src); };
+    thumb.appendChild(img);
+    const del = document.createElement("button");
+    del.className = "diary-photo-del"; del.textContent = "✕"; del.title = "Удалить фото";
+    del.onclick = (ev)=>{
+      ev.stopPropagation();
+      entry.photos.splice(idx,1);
+      renderDiaryTab();
+      scheduleDiarySave(diarySelectedDateISO);
+    };
+    thumb.appendChild(del);
+    photosWrap.appendChild(thumb);
+  });
+
+  if((entry.photos||[]).length < DIARY_MAX_PHOTOS){
+    const addTile = document.createElement("label");
+    addTile.className = "diary-add-photo-tile";
+    addTile.textContent = "+";
+    addTile.title = "Добавить фото";
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*"; input.multiple = true; input.style.display = "none";
+    input.addEventListener("change", handleDiaryPhotoInputChange);
+    addTile.appendChild(input);
+    photosWrap.appendChild(addTile);
+  }
 }
 
 // ==================== справочники: категории, активности, их связь ====================
@@ -1546,6 +1776,26 @@ document.getElementById("calTodayBtn").addEventListener("click", ()=>{
   goToToday();
 });
 
+document.getElementById("diaryCalPrevMonth").addEventListener("click", ()=>{
+  diaryViewMonth = new Date(diaryViewMonth.getFullYear(), diaryViewMonth.getMonth()-1, 1);
+  renderDiaryCalendar();
+});
+document.getElementById("diaryCalNextMonth").addEventListener("click", ()=>{
+  diaryViewMonth = new Date(diaryViewMonth.getFullYear(), diaryViewMonth.getMonth()+1, 1);
+  renderDiaryCalendar();
+});
+document.getElementById("diaryCalTodayBtn").addEventListener("click", ()=>{
+  selectDiaryDate(isoDate(new Date()));
+});
+document.getElementById("diaryText").addEventListener("input", (e)=>{
+  const entry = getDiaryEntry(diarySelectedDateISO);
+  entry.text = e.target.value;
+  scheduleDiarySave(diarySelectedDateISO);
+});
+document.getElementById("photoLightbox").addEventListener("click", ()=>{
+  document.getElementById("photoLightbox").style.display = "none";
+});
+
 document.getElementById("nwSkipBtn").addEventListener("click", ()=>{
   // «Пока не вносить» — просто закрываем попап, никуда не переходим и ничего не создаём
   closeNewWeekPrompt();
@@ -1613,6 +1863,8 @@ let saveTimer = null;
 function userWeeksCol(uid){ return collection(db, "users", uid, "weeks"); }
 function userMetaDoc(uid){ return doc(db, "users", uid); }
 function userWeekDoc(uid, weekKey){ return doc(db, "users", uid, "weeks", weekKey); }
+function userDiaryCol(uid){ return collection(db, "users", uid, "diary"); }
+function userDiaryDoc(uid, dateKey){ return doc(db, "users", uid, "diary", dateKey); }
 
 function setSaveStatus(state){
   const el = document.getElementById("saveStatus");
@@ -1648,6 +1900,39 @@ async function saveNow(){
 // сохранить сразу перед закрытием вкладки, если сохранение ещё не прошло
 window.addEventListener("beforeunload", ()=>{ if(saveTimer) saveNow(); });
 
+// ---- сохранение записей дневника (отдельно от основного плана — своя debounce-очередь,
+// т.к. привязано к конкретной календарной дате, а не к текущей открытой неделе) ----
+let diarySaveTimer = null;
+let diarySaveDateKey = null;
+
+function scheduleDiarySave(dateKey){
+  if(suppressSave || !currentUser) return;
+  diarySaveDateKey = dateKey;
+  setSaveStatus("saving");
+  if(diarySaveTimer) clearTimeout(diarySaveTimer);
+  diarySaveTimer = setTimeout(saveDiaryNow, 700);
+}
+async function saveDiaryNow(){
+  if(diarySaveTimer){ clearTimeout(diarySaveTimer); diarySaveTimer = null; }
+  if(!currentUser || !diarySaveDateKey) return;
+  const uid = currentUser.uid;
+  const dateKey = diarySaveDateKey;
+  diarySaveDateKey = null;
+  const entry = diary[dateKey] || {text:"", photos:[]};
+  try{
+    await setDoc(userDiaryDoc(uid, dateKey), {text: entry.text||"", photos: entry.photos||[], updatedAt: serverTimestamp()});
+    setSaveStatus("saved");
+    renderDiaryCalendar();
+  }catch(err){
+    console.error("Ошибка сохранения дневника:", err);
+    setSaveStatus("error");
+  }
+}
+function flushDiarySaveIfPending(){
+  if(diarySaveTimer) saveDiaryNow();
+}
+window.addEventListener("beforeunload", ()=>{ if(diarySaveTimer) saveDiaryNow(); });
+
 // новый пользователь — начинает с пустого плана (без активностей) и сам вносит своё расписание
 async function initFreshUserData(uid){
   weeks = {};
@@ -1656,6 +1941,9 @@ async function initFreshUserData(uid){
   week = weeks[currentWeekKey];
   currentDay = DAYS[(_today0.getDay()+6)%7];
   calendarViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
+  diary = {};
+  diarySelectedDateISO = isoDate(_today0);
+  diaryViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
   await setDoc(userMetaDoc(uid), {catalog, categories, categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()});
   await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
 }
@@ -1689,6 +1977,12 @@ async function loadUserData(uid){
   week = weeks[currentWeekKey];
   currentDay = (meta.currentDay && DAYS.includes(meta.currentDay)) ? meta.currentDay : DAYS[(_today0.getDay()+6)%7];
   calendarViewMonth = new Date(parseISODate(currentWeekKey).getFullYear(), parseISODate(currentWeekKey).getMonth(), 1);
+
+  diary = {};
+  const diarySnap = await getDocs(userDiaryCol(uid));
+  diarySnap.forEach(d=>{ diary[d.id] = d.data(); });
+  diarySelectedDateISO = isoDate(_today0);
+  diaryViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
 }
 
 // ---- экран входа/регистрации ----
