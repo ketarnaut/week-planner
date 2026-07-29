@@ -1979,10 +1979,17 @@ async function loadUserData(uid){
   calendarViewMonth = new Date(parseISODate(currentWeekKey).getFullYear(), parseISODate(currentWeekKey).getMonth(), 1);
 
   diary = {};
-  const diarySnap = await getDocs(userDiaryCol(uid));
-  diarySnap.forEach(d=>{ diary[d.id] = d.data(); });
   diarySelectedDateISO = isoDate(_today0);
   diaryViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
+  // Дневник грузим отдельно и не даём его сбою (например, если правила Firestore для
+  // подколлекции diary ещё не задеплоены) заблокировать загрузку всего остального плана —
+  // в худшем случае дневник откроется пустым, но планировщик недели останется рабочим.
+  try{
+    const diarySnap = await getDocs(userDiaryCol(uid));
+    diarySnap.forEach(d=>{ diary[d.id] = d.data(); });
+  }catch(err){
+    console.error("Ошибка загрузки дневника (планировщик недели загрузится как обычно):", err);
+  }
 }
 
 // ---- экран входа/регистрации ----
