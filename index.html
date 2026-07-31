@@ -673,6 +673,7 @@ function renderTemplateModalButtons(){
       if(!pendingNewWeek) return;
       const {date, weekKey} = pendingNewWeek;
       weeks[weekKey] = cloneWeekAsTemplate(tpl.days);
+      needsFullWeekSave = true;
       closeNewWeekPrompt();
       activateWeek(date, weekKey);
     };
@@ -1802,6 +1803,7 @@ document.getElementById("nwDuplicateBtn").addEventListener("click", ()=>{
   if(!pendingNewWeek) return;
   const {date, weekKey} = pendingNewWeek;
   getOrCreateWeek(weekKey); // клонирует ближайшую известную неделю и сохраняет её под weekKey
+  needsFullWeekSave = true;
   closeNewWeekPrompt();
   activateWeek(date, weekKey);
 });
@@ -1809,6 +1811,7 @@ document.getElementById("nwBlankBtn").addEventListener("click", ()=>{
   if(!pendingNewWeek) return;
   const {date, weekKey} = pendingNewWeek;
   weeks[weekKey] = blankWeekTemplate();
+  needsFullWeekSave = true;
   closeNewWeekPrompt();
   activateWeek(date, weekKey);
 });
@@ -1857,6 +1860,10 @@ document.getElementById("addBtn").addEventListener("click", ()=>{
 let currentUser = null;
 let suppressSave = true; // true, пока идёт первичная загрузка — чтобы не перезаписывать облако тем же самым сразу после чтения
 let saveTimer = null;
+// true сразу после создания новой недели (дублирование/шаблон/с нуля) — до первого успешного
+// сохранения такую неделю нужно записать в облако целиком (там её ещё нет), дальше saveNow()
+// переходит на точечную запись только текущего дня — см. комментарий в saveNow().
+let needsFullWeekSave = false;
 
 function userWeeksCol(uid){ return collection(db, "users", uid, "weeks"); }
 function userMetaDoc(uid){ return doc(db, "users", uid); }
@@ -1888,7 +1895,19 @@ async function saveNow(){
   const uid = currentUser.uid;
   try{
     await setDoc(userMetaDoc(uid), {catalog, categories, categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()}, {merge:true});
-    await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
+    if(needsFullWeekSave){
+      // неделя только что создана (дублирование/шаблон/с нуля) — её ещё ни разу не было в
+      // облаке, поэтому пишем целиком все 7 дней один раз, дальше переходим на point-запись
+      await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
+      needsFullWeekSave = false;
+    } else {
+      // пишем только тот день, который реально редактируется (merge:true не трогает поля
+      // остальных дней). Это защищает от ситуации, когда открытая где-то ещё (на другом
+      // устройстве/вкладке, с устаревшими данными в памяти) сессия этой же недели сохраняет
+      // себя и затирает своей старой копией то, что было отмечено в других днях с тех пор —
+      // именно так раньше могли пропадать галочки за уже прошедшие дни.
+      await setDoc(userWeekDoc(uid, currentWeekKey), {[currentDay]: week[currentDay]}, {merge:true});
+    }
     setSaveStatus("saved");
   }catch(err){
     console.error("Ошибка сохранения в Firestore:", err);
@@ -1948,6 +1967,7 @@ async function initFreshUserData(uid){
 
 // загрузить все данные вошедшего пользователя из Firestore в локальные переменные
 async function loadUserData(uid){
+  needsFullWeekSave = false;
   const metaSnap = await getDoc(userMetaDoc(uid));
   if(!metaSnap.exists()){
     await initFreshUserData(uid);
@@ -1969,6 +1989,7 @@ async function loadUserData(uid){
     // в норме, но подстрахуемся пустым планом
     weeks[_firstWeekKey] = blankWeekTemplate();
     currentWeekKey = _firstWeekKey;
+    needsFullWeekSave = true;
   } else {
     currentWeekKey = (meta.currentWeekKey && weeks[meta.currentWeekKey]) ? meta.currentWeekKey : keys.sort()[0];
   }
