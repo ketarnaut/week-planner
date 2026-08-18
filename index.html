@@ -478,7 +478,7 @@
 
 <div class="modal-overlay" id="newWeekModal" style="display:none;">
   <div class="modal-box">
-    <h3>Для этой недели план ещё не был внесён</h3>
+    <h3 id="newWeekTitle">Для этой недели план ещё не был внесён</h3>
     <div class="hint" id="newWeekRange" style="margin-top:0;margin-bottom:0;"></div>
     <div class="modal-actions">
       <button class="btn secondary" id="nwSkipBtn" type="button">Пока не вносить</button>
@@ -622,13 +622,26 @@ function blankWeekTemplate(){
   return copy;
 }
 
+// неделя считается пустой, если ни в одном из 7 дней нет ни одной активности — например,
+// пользователь выбрал шаблон, а потом удалил из него всё. Такую неделю мы трактуем так же,
+// как ещё не заведённую: снова предлагаем попап с выбором (см. goToDate ниже).
+function isWeekEmpty(weekData){
+  return DAYS.every(d => ((weekData[d] && weekData[d].acts) || []).length === 0);
+}
+
 // вернуть данные недели по ключу-понедельнику, склонировав ближайшую существующую неделю
 // (по умолчанию — последнюю известную) как шаблон. Используется ТОЛЬКО после того, как
-// пользователь явно подтвердил это в попапе «план ещё не внесён» — сам по себе не решает,
-// нужно ли создавать неделю (см. goToDate/nwDuplicateBtn ниже).
+// пользователь явно подтвердил это в попапе «план ещё не внесён»/«неделя пуста» — сам по себе
+// не решает, нужно ли создавать неделю (см. goToDate/nwDuplicateBtn ниже). Перезаписывает даже
+// уже существующую неделю — это ожидаемо, т.к. кнопка «Дублировать» показывается только когда
+// неделя новая или пустая, реальные данные затереть нечем.
 function getOrCreateWeek(weekKey){
-  if(weeks[weekKey]) return weeks[weekKey];
-  const keys = Object.keys(weeks).sort();
+  const keys = Object.keys(weeks).filter(k=>k!==weekKey).sort();
+  if(keys.length===0){
+    // дублировать не из чего (это единственная известная неделя) — заводим пустой план
+    weeks[weekKey] = blankWeekTemplate();
+    return weeks[weekKey];
+  }
   let sourceKey = null;
   for(let i=keys.length-1;i>=0;i--){ if(keys[i] < weekKey){ sourceKey = keys[i]; break; } }
   if(!sourceKey) sourceKey = keys.find(k=>k>weekKey) || keys[0];
@@ -655,7 +668,12 @@ function activateWeek(date, weekKey){
 }
 
 function openNewWeekPrompt(date, weekKey){
-  pendingNewWeek = {date, weekKey};
+  const alreadyExists = !!weeks[weekKey]; // существует, но пустая (см. isWeekEmpty) — не только что заведённая
+  pendingNewWeek = {date, weekKey, alreadyExists};
+  document.getElementById("newWeekTitle").textContent = alreadyExists
+    ? "В этой неделе сейчас нет ни одной активности"
+    : "Для этой недели план ещё не был внесён";
+  document.getElementById("nwSkipBtn").textContent = alreadyExists ? "Оставить пустой" : "Пока не вносить";
   document.getElementById("newWeekRange").textContent = fmtWeekRange(mondayOf(date));
   renderTemplateModalButtons();
   document.getElementById("newWeekModal").style.display = "flex";
@@ -686,10 +704,11 @@ function closeNewWeekPrompt(){
 }
 
 // перейти к конкретной календарной дате (и, соответственно, к её неделе). Если для этой
-// недели ещё нет плана — не создаём его молча, а спрашиваем пользователя, что сделать.
+// недели ещё нет плана, либо план есть, но полностью пуст (все активности удалены) — не
+// открываем её молча, а спрашиваем пользователя, что сделать.
 function goToDate(date){
   const weekKey = isoDate(mondayOf(date));
-  if(weeks[weekKey]){
+  if(weeks[weekKey] && !isWeekEmpty(weeks[weekKey])){
     activateWeek(date, weekKey);
   } else {
     openNewWeekPrompt(date, weekKey);
@@ -1796,8 +1815,13 @@ document.getElementById("photoLightbox").addEventListener("click", ()=>{
 });
 
 document.getElementById("nwSkipBtn").addEventListener("click", ()=>{
-  // «Пока не вносить» — просто закрываем попап, никуда не переходим и ничего не создаём
+  if(!pendingNewWeek) return;
+  const {date, weekKey, alreadyExists} = pendingNewWeek;
   closeNewWeekPrompt();
+  // Неделя уже существовала (просто пуста) — открываем её как есть, ничего не создаём и не
+  // меняем. Неделя ещё не заведена вовсе — «Пока не вносить» значит буквально ничего не
+  // делать: не создавать её и никуда не переходить, остаёмся там, где были.
+  if(alreadyExists) activateWeek(date, weekKey);
 });
 document.getElementById("nwDuplicateBtn").addEventListener("click", ()=>{
   if(!pendingNewWeek) return;
