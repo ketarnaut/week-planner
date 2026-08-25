@@ -1552,11 +1552,14 @@ function renderRefs(){
     const del = document.createElement("button");
     del.className = "del-btn"; del.textContent = "✕"; del.title = "Удалить категорию";
     del.onclick = ()=>{
-      categories = categories.filter(c=>c!==cat);
+      removeFromCategories(cat);
       Object.keys(categoryLinks).forEach(n=>{
-        if(categoryLinks[n]===cat){ delete categoryLinks[n]; removedCategoryLinkKeys.add(n); }
+        if(categoryLinks[n]===cat){
+          delete categoryLinks[n];
+          removedCategoryLinkKeys.add(n);
+          dirtyCategoryLinkKeys.delete(n);
+        }
       });
-      categoriesDirty = true;
       renderAll();
     };
     row.appendChild(del);
@@ -1574,10 +1577,10 @@ function renderRefs(){
     const del = document.createElement("button");
     del.className = "del-btn"; del.textContent = "✕"; del.title = "Удалить активность из справочника";
     del.onclick = ()=>{
-      catalog = catalog.filter(c=>c!==name);
+      removeFromCatalog(name);
       delete categoryLinks[name];
       removedCategoryLinkKeys.add(name);
-      catalogDirty = true; categoriesDirty = true;
+      dirtyCategoryLinkKeys.delete(name);
       renderAll();
     };
     row.appendChild(del);
@@ -1602,9 +1605,8 @@ function renderRefs(){
       sel.appendChild(o);
     });
     sel.onchange = ()=>{
-      if(sel.value){ categoryLinks[name]=sel.value; removedCategoryLinkKeys.delete(name); }
-      else { delete categoryLinks[name]; removedCategoryLinkKeys.add(name); }
-      categoriesDirty = true;
+      if(sel.value){ categoryLinks[name]=sel.value; dirtyCategoryLinkKeys.add(name); removedCategoryLinkKeys.delete(name); }
+      else { delete categoryLinks[name]; removedCategoryLinkKeys.add(name); dirtyCategoryLinkKeys.delete(name); }
       scheduleSave();
     };
     row.appendChild(sel);
@@ -1617,8 +1619,7 @@ document.getElementById("addCategoryBtn").addEventListener("click", ()=>{
   const name = inp.value.trim();
   if(!name){ showTopToast("Впиши название категории."); return; }
   if(categories.includes(name)){ showTopToast("Такая категория уже есть."); return; }
-  categories.push(name);
-  categoriesDirty = true;
+  addToCategories(name);
   inp.value = "";
   renderAll();
 });
@@ -1627,8 +1628,7 @@ document.getElementById("addActivityBtn").addEventListener("click", ()=>{
   const name = inp.value.trim();
   if(!name){ showTopToast("Впиши название активности."); return; }
   if(catalog.includes(name)){ showTopToast("Такая активность уже есть."); return; }
-  catalog.push(name);
-  catalogDirty = true;
+  addToCatalog(name);
   inp.value = "";
   renderAll();
 });
@@ -1785,7 +1785,7 @@ document.getElementById("tplAddBtn").addEventListener("click", ()=>{
     const newName = document.getElementById("tplAddNewName").value.trim();
     if(!newName){ showTopToast("Впиши название новой активности."); return; }
     name = newName;
-    if(!catalog.includes(name)){ catalog.push(name); catalogDirty = true; }
+    if(!catalog.includes(name)) addToCatalog(name);
   }
   const start = document.getElementById("tplAddStart").value;
   const end = document.getElementById("tplAddEnd").value;
@@ -1881,7 +1881,7 @@ document.getElementById("addBtn").addEventListener("click", ()=>{
     const newName = document.getElementById("addNewName").value.trim();
     if(!newName){ alert("Впиши название новой активности"); return; }
     name = newName;
-    if(!catalog.includes(name)){ catalog.push(name); catalogDirty = true; }
+    if(!catalog.includes(name)) addToCatalog(name);
   }
   const start = document.getElementById("addStart").value;
   const end = document.getElementById("addEnd").value;
@@ -1919,13 +1919,6 @@ let weeksNeedingFullSave = new Set();
 let dirtyDayKeys = new Set();
 function markDayDirty(){ dirtyDayKeys.add(currentWeekKey + "||" + currentDay); }
 
-// «грязные» флаги для полей users/{uid} (catalog, categories, categoryLinks, templates) —
-// saveNow() пишет каждое поле, только если оно реально менялось в ЭТОЙ сессии с момента
-// загрузки. Иначе, как раньше с неделями, любое сохранение (даже по несвязанной причине —
-// например, галочка в другом дне) перезаписывало бы облачную версию поля устаревшей локальной
-// копией из памяти этой вкладки, если она открыта дольше, чем где-то ещё правили справочники.
-let catalogDirty = false;
-let categoriesDirty = false; // покрывает и categories, и categoryLinks — правятся на одной вкладке
 // id шаблонов, изменённых с последнего сохранения — пишем в облако ТОЛЬКО их (а не весь
 // templates целиком), иначе правки одного шаблона на одной вкладке рисковали затереться
 // устаревшей копией ДРУГОГО шаблона, случайно попавшего в то же сохранение с другой вкладки
@@ -1934,6 +1927,67 @@ let dirtyTemplateIds = new Set();
 // отсутствующие ключи карты сам по себе, поэтому для них нужно явно послать deleteField()
 let removedCategoryLinkKeys = new Set();
 let removedTemplateIds = new Set();
+// активности, у которых реально сменили категорию в этой сессии — как и с templates выше,
+// пишем в облако только те ключи categoryLinks, которые правда поменялись, а не всю карту
+let dirtyCategoryLinkKeys = new Set();
+
+// catalog/categories в облаке хранятся как map {название: числовой порядок}, а не как массив —
+// merge:true для map-поля мержит только присланные ключи, не трогая остальные. Раньше это были
+// обычные массивы, и любое добавление/удаление одного элемента писало ВЕСЬ список целиком —
+// если в это же время с другого устройства добавили что-то своё, чья запись окажется позже,
+// та и победит, а добавление с другого устройства бесследно исчезнет. В памяти вкладки
+// catalog/categories остаются обычными массивами — вся остальная логика (выпадающие списки,
+// фильтры) продолжает работать с ними как раньше; в map-формат превращаются только при
+// записи/чтении из Firestore.
+let catalogOrder = {};      // { название: порядок } — для восстановления порядка при загрузке
+let categoriesOrder = {};   // то же для категорий
+let addedCatalogNames = new Set();
+let removedCatalogNames = new Set();
+let addedCategoryNames = new Set();
+let removedCategoryNames = new Set();
+// true, если при загрузке catalog/categories в облаке ещё лежали старым массивом — merge:true
+// не умеет слить map поверх поля другого типа (при несовпадении типов Firestore просто заменяет
+// всё поле целиком), поэтому первое сохранение после такой загрузки должно мигрировать формат
+// особым образом (см. saveNow) — точечный merge-патч тут применить нельзя.
+let catalogFormatLegacy = false;
+let categoriesFormatLegacy = false;
+
+function addToCatalog(name){
+  if(catalog.includes(name)) return;
+  catalog.push(name);
+  catalogOrder[name] = Date.now();
+  addedCatalogNames.add(name);
+  removedCatalogNames.delete(name);
+}
+function removeFromCatalog(name){
+  catalog = catalog.filter(c=>c!==name);
+  removedCatalogNames.add(name);
+  addedCatalogNames.delete(name);
+}
+function addToCategories(name){
+  if(categories.includes(name)) return;
+  categories.push(name);
+  categoriesOrder[name] = Date.now();
+  addedCategoryNames.add(name);
+  removedCategoryNames.delete(name);
+}
+function removeFromCategories(cat){
+  categories = categories.filter(c=>c!==cat);
+  removedCategoryNames.add(cat);
+  addedCategoryNames.delete(cat);
+}
+// старые аккаунты хранят catalog/categories как обычный массив — читаем оба формата.
+// Новый формат (map {название: порядок}) сортируем по значению, чтобы восстановить порядок.
+function orderedNamesFromField(field){
+  if(Array.isArray(field)) return field.slice();
+  if(field && typeof field==="object") return Object.entries(field).sort((a,b)=>a[1]-b[1]).map(([name])=>name);
+  return [];
+}
+function buildOrderMap(names){
+  const m = {};
+  names.forEach((name,i)=>{ m[name] = i; });
+  return m;
+}
 
 function userWeeksCol(uid){ return collection(db, "users", uid, "weeks"); }
 function userMetaDoc(uid){ return doc(db, "users", uid); }
@@ -1965,16 +2019,49 @@ async function saveNow(){
   const uid = currentUser.uid;
   try{
     // currentWeekKey/currentDay — просто «где я сейчас», их можно писать всегда, перезаписать
-    // тут особо нечего. catalog/categories+categoryLinks/templates пишем ТОЛЬКО если реально
-    // менялись в этой сессии — иначе несвязанное сохранение (например, галочка в другом дне)
-    // затирало бы устаревшей копией то, что успели поправить в справочниках в другой вкладке.
+    // тут особо нечего. catalog/categories/categoryLinks/templates пишем ТОЛЬКО те конкретные
+    // ключи, что реально менялись в этой сессии — иначе несвязанное сохранение (например,
+    // галочка в другом дне) затирало бы устаревшей копией то, что успели поправить в
+    // справочниках в другой вкладке.
     const metaPatch = {currentWeekKey, currentDay, updatedAt: serverTimestamp()};
-    if(catalogDirty) metaPatch.catalog = catalog;
-    if(categoriesDirty){
-      metaPatch.categories = categories;
-      // ключи, которые убрали локально, нужно удалить явно — merge:true сам по себе не
-      // удаляет из облачной карты ключи, отсутствующие в присланном объекте
-      const linksPatch = {...categoryLinks};
+    // одноразовая миграция catalog/categories со старого формата (массив) на новый (map):
+    // merge:true не умеет слить map поверх поля другого типа — при несовпадении типов Firestore
+    // просто заменяет всё поле целиком, поэтому точечный delta-патч тут применить нельзя. Читаем
+    // свежее состояние прямо перед записью (а не полагаемся на то, что загрузили при входе),
+    // чтобы не затереть то, что другая сессия могла сохранить долей секунды раньше.
+    if(catalogFormatLegacy || categoriesFormatLegacy){
+      const freshSnap = await getDoc(userMetaDoc(uid));
+      const freshMeta = freshSnap.exists() ? freshSnap.data() : {};
+      if(catalogFormatLegacy){
+        const merged = Array.from(new Set([...orderedNamesFromField(freshMeta.catalog), ...catalog]))
+          .filter(n=>!removedCatalogNames.has(n));
+        metaPatch.catalog = buildOrderMap(merged);
+        catalogFormatLegacy = false;
+      }
+      if(categoriesFormatLegacy){
+        const merged = Array.from(new Set([...orderedNamesFromField(freshMeta.categories), ...categories]))
+          .filter(n=>!removedCategoryNames.has(n));
+        metaPatch.categories = buildOrderMap(merged);
+        categoriesFormatLegacy = false;
+      }
+    }
+    if(metaPatch.catalog===undefined && (addedCatalogNames.size>0 || removedCatalogNames.size>0)){
+      const patch = {};
+      addedCatalogNames.forEach(name=>{ patch[name] = catalogOrder[name] ?? Date.now(); });
+      removedCatalogNames.forEach(name=>{ patch[name] = deleteField(); });
+      metaPatch.catalog = patch;
+    }
+    if(metaPatch.categories===undefined && (addedCategoryNames.size>0 || removedCategoryNames.size>0)){
+      const patch = {};
+      addedCategoryNames.forEach(name=>{ patch[name] = categoriesOrder[name] ?? Date.now(); });
+      removedCategoryNames.forEach(name=>{ patch[name] = deleteField(); });
+      metaPatch.categories = patch;
+    }
+    if(dirtyCategoryLinkKeys.size>0 || removedCategoryLinkKeys.size>0){
+      // как и с catalog/categories выше — шлём только реально изменённые ключи, а не всю
+      // локальную копию categoryLinks целиком
+      const linksPatch = {};
+      dirtyCategoryLinkKeys.forEach(k=>{ if(categoryLinks[k]!==undefined) linksPatch[k] = categoryLinks[k]; });
       removedCategoryLinkKeys.forEach(k=>{ linksPatch[k] = deleteField(); });
       metaPatch.categoryLinks = linksPatch;
     }
@@ -1987,8 +2074,10 @@ async function saveNow(){
       metaPatch.templates = templatesPatch;
     }
     await setDoc(userMetaDoc(uid), metaPatch, {merge:true});
-    catalogDirty = false; categoriesDirty = false;
-    removedCategoryLinkKeys.clear(); dirtyTemplateIds.clear(); removedTemplateIds.clear();
+    addedCatalogNames.clear(); removedCatalogNames.clear();
+    addedCategoryNames.clear(); removedCategoryNames.clear();
+    dirtyCategoryLinkKeys.clear(); removedCategoryLinkKeys.clear();
+    dirtyTemplateIds.clear(); removedTemplateIds.clear();
     // недели, только что созданные (дублирование/шаблон/с нуля) — их ещё ни разу не было в
     // облаке, поэтому пишем целиком все 7 дней один раз, дальше переходим на точечную запись.
     for(const wk of weeksNeedingFullSave){
@@ -2064,23 +2153,39 @@ async function initFreshUserData(uid){
   diary = {};
   diarySelectedDateISO = isoDate(_today0);
   diaryViewMonth = new Date(_today0.getFullYear(), _today0.getMonth(), 1);
-  await setDoc(userMetaDoc(uid), {catalog, categories, categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()});
+  catalogOrder = buildOrderMap(catalog);
+  categoriesOrder = buildOrderMap(categories);
+  await setDoc(userMetaDoc(uid), {
+    catalog: buildOrderMap(catalog), categories: buildOrderMap(categories),
+    categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()
+  });
   await setDoc(userWeekDoc(uid, currentWeekKey), weeks[currentWeekKey]);
 }
 
 // загрузить все данные вошедшего пользователя из Firestore в локальные переменные
 async function loadUserData(uid){
   weeksNeedingFullSave.clear(); dirtyDayKeys.clear();
-  catalogDirty = false; categoriesDirty = false;
-  removedCategoryLinkKeys.clear(); dirtyTemplateIds.clear(); removedTemplateIds.clear();
+  addedCatalogNames.clear(); removedCatalogNames.clear();
+  addedCategoryNames.clear(); removedCategoryNames.clear();
+  dirtyCategoryLinkKeys.clear(); removedCategoryLinkKeys.clear();
+  dirtyTemplateIds.clear(); removedTemplateIds.clear();
+  catalogFormatLegacy = false; categoriesFormatLegacy = false;
   const metaSnap = await getDoc(userMetaDoc(uid));
   if(!metaSnap.exists()){
     await initFreshUserData(uid);
     return;
   }
   const meta = metaSnap.data();
-  catalog = meta.catalog && meta.catalog.length ? meta.catalog : catalog;
-  categories = meta.categories && meta.categories.length ? meta.categories : categories;
+  // catalog/categories могли остаться в старом формате (обычный массив) у аккаунтов, которые
+  // ещё не сохранялись после перехода на map — orderedNamesFromField понимает оба варианта
+  catalogFormatLegacy = Array.isArray(meta.catalog);
+  categoriesFormatLegacy = Array.isArray(meta.categories);
+  const loadedCatalog = orderedNamesFromField(meta.catalog);
+  catalog = loadedCatalog.length ? loadedCatalog : catalog;
+  catalogOrder = buildOrderMap(catalog);
+  const loadedCategories = orderedNamesFromField(meta.categories);
+  categories = loadedCategories.length ? loadedCategories : categories;
+  categoriesOrder = buildOrderMap(categories);
   categoryLinks = meta.categoryLinks || {};
   templates = meta.templates || {};
 
