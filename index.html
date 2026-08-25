@@ -514,7 +514,7 @@ import {
   createUserWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp
+  getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp, deleteField
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -1547,7 +1547,10 @@ function renderRefs(){
     del.className = "del-btn"; del.textContent = "✕"; del.title = "Удалить категорию";
     del.onclick = ()=>{
       categories = categories.filter(c=>c!==cat);
-      Object.keys(categoryLinks).forEach(n=>{ if(categoryLinks[n]===cat) delete categoryLinks[n]; });
+      Object.keys(categoryLinks).forEach(n=>{
+        if(categoryLinks[n]===cat){ delete categoryLinks[n]; removedCategoryLinkKeys.add(n); }
+      });
+      categoriesDirty = true;
       renderAll();
     };
     row.appendChild(del);
@@ -1567,6 +1570,8 @@ function renderRefs(){
     del.onclick = ()=>{
       catalog = catalog.filter(c=>c!==name);
       delete categoryLinks[name];
+      removedCategoryLinkKeys.add(name);
+      catalogDirty = true; categoriesDirty = true;
       renderAll();
     };
     row.appendChild(del);
@@ -1591,8 +1596,9 @@ function renderRefs(){
       sel.appendChild(o);
     });
     sel.onchange = ()=>{
-      if(sel.value) categoryLinks[name]=sel.value;
-      else delete categoryLinks[name];
+      if(sel.value){ categoryLinks[name]=sel.value; removedCategoryLinkKeys.delete(name); }
+      else { delete categoryLinks[name]; removedCategoryLinkKeys.add(name); }
+      categoriesDirty = true;
       scheduleSave();
     };
     row.appendChild(sel);
@@ -1606,6 +1612,7 @@ document.getElementById("addCategoryBtn").addEventListener("click", ()=>{
   if(!name){ showTopToast("Впиши название категории."); return; }
   if(categories.includes(name)){ showTopToast("Такая категория уже есть."); return; }
   categories.push(name);
+  categoriesDirty = true;
   inp.value = "";
   renderAll();
 });
@@ -1615,6 +1622,7 @@ document.getElementById("addActivityBtn").addEventListener("click", ()=>{
   if(!name){ showTopToast("Впиши название активности."); return; }
   if(catalog.includes(name)){ showTopToast("Такая активность уже есть."); return; }
   catalog.push(name);
+  catalogDirty = true;
   inp.value = "";
   renderAll();
 });
@@ -1688,6 +1696,7 @@ function renderTemplatesTab(){
       del.className="del-btn"; del.textContent="✕"; del.title="Удалить из шаблона";
       del.onclick = ()=>{
         tpl.days[d].acts = tpl.days[d].acts.filter(x=>x.id!==a.id);
+        templatesDirty = true;
         renderAll();
       };
       row.appendChild(del);
@@ -1736,6 +1745,8 @@ document.getElementById("createTemplateBtn").addEventListener("click", ()=>{
   if(Object.values(templates).some(t=>t.name===name)){ showTopToast("Шаблон с таким названием уже есть."); return; }
   const id = Math.random().toString(36).slice(2);
   templates[id] = {name, days: blankWeekTemplate()};
+  templatesDirty = true;
+  removedTemplateIds.delete(id);
   currentTemplateId = id;
   inp.value = "";
   document.getElementById("newTemplateRow").style.display = "none";
@@ -1750,6 +1761,8 @@ document.getElementById("templateSelect").addEventListener("change", (e)=>{
 document.getElementById("deleteTemplateBtn").addEventListener("click", ()=>{
   if(!currentTemplateId) return;
   delete templates[currentTemplateId];
+  removedTemplateIds.add(currentTemplateId);
+  templatesDirty = true;
   currentTemplateId = null;
   renderAll();
 });
@@ -1766,7 +1779,7 @@ document.getElementById("tplAddBtn").addEventListener("click", ()=>{
     const newName = document.getElementById("tplAddNewName").value.trim();
     if(!newName){ showTopToast("Впиши название новой активности."); return; }
     name = newName;
-    if(!catalog.includes(name)) catalog.push(name);
+    if(!catalog.includes(name)){ catalog.push(name); catalogDirty = true; }
   }
   const start = document.getElementById("tplAddStart").value;
   const end = document.getElementById("tplAddEnd").value;
@@ -1778,6 +1791,7 @@ document.getElementById("tplAddBtn").addEventListener("click", ()=>{
   tplSelectedDays.forEach(d=>{
     tpl.days[d].acts.push(act(name,start,end));
   });
+  templatesDirty = true;
   document.getElementById("tplAddNewName").value="";
   renderAll();
 });
@@ -1861,7 +1875,7 @@ document.getElementById("addBtn").addEventListener("click", ()=>{
     const newName = document.getElementById("addNewName").value.trim();
     if(!newName){ alert("Впиши название новой активности"); return; }
     name = newName;
-    if(!catalog.includes(name)) catalog.push(name);
+    if(!catalog.includes(name)){ catalog.push(name); catalogDirty = true; }
   }
   const start = document.getElementById("addStart").value;
   const end = document.getElementById("addEnd").value;
@@ -1888,6 +1902,19 @@ let saveTimer = null;
 // сохранения такую неделю нужно записать в облако целиком (там её ещё нет), дальше saveNow()
 // переходит на точечную запись только текущего дня — см. комментарий в saveNow().
 let needsFullWeekSave = false;
+
+// «грязные» флаги для полей users/{uid} (catalog, categories, categoryLinks, templates) —
+// saveNow() пишет каждое поле, только если оно реально менялось в ЭТОЙ сессии с момента
+// загрузки. Иначе, как раньше с неделями, любое сохранение (даже по несвязанной причине —
+// например, галочка в другом дне) перезаписывало бы облачную версию поля устаревшей локальной
+// копией из памяти этой вкладки, если она открыта дольше, чем где-то ещё правили справочники.
+let catalogDirty = false;
+let categoriesDirty = false; // покрывает и categories, и categoryLinks — правятся на одной вкладке
+let templatesDirty = false;
+// ключи, удалённые из categoryLinks/templates с последнего сохранения — merge:true не удаляет
+// отсутствующие ключи карты сам по себе, поэтому для них нужно явно послать deleteField()
+let removedCategoryLinkKeys = new Set();
+let removedTemplateIds = new Set();
 
 function userWeeksCol(uid){ return collection(db, "users", uid, "weeks"); }
 function userMetaDoc(uid){ return doc(db, "users", uid); }
@@ -1918,7 +1945,28 @@ async function saveNow(){
   if(!currentUser) return;
   const uid = currentUser.uid;
   try{
-    await setDoc(userMetaDoc(uid), {catalog, categories, categoryLinks, templates, currentWeekKey, currentDay, updatedAt: serverTimestamp()}, {merge:true});
+    // currentWeekKey/currentDay — просто «где я сейчас», их можно писать всегда, перезаписать
+    // тут особо нечего. catalog/categories+categoryLinks/templates пишем ТОЛЬКО если реально
+    // менялись в этой сессии — иначе несвязанное сохранение (например, галочка в другом дне)
+    // затирало бы устаревшей копией то, что успели поправить в справочниках в другой вкладке.
+    const metaPatch = {currentWeekKey, currentDay, updatedAt: serverTimestamp()};
+    if(catalogDirty) metaPatch.catalog = catalog;
+    if(categoriesDirty){
+      metaPatch.categories = categories;
+      // ключи, которые убрали локально, нужно удалить явно — merge:true сам по себе не
+      // удаляет из облачной карты ключи, отсутствующие в присланном объекте
+      const linksPatch = {...categoryLinks};
+      removedCategoryLinkKeys.forEach(k=>{ linksPatch[k] = deleteField(); });
+      metaPatch.categoryLinks = linksPatch;
+    }
+    if(templatesDirty){
+      const templatesPatch = {...templates};
+      removedTemplateIds.forEach(id=>{ templatesPatch[id] = deleteField(); });
+      metaPatch.templates = templatesPatch;
+    }
+    await setDoc(userMetaDoc(uid), metaPatch, {merge:true});
+    catalogDirty = false; categoriesDirty = false; templatesDirty = false;
+    removedCategoryLinkKeys.clear(); removedTemplateIds.clear();
     if(needsFullWeekSave){
       // неделя только что создана (дублирование/шаблон/с нуля) — её ещё ни разу не было в
       // облаке, поэтому пишем целиком все 7 дней один раз, дальше переходим на point-запись
@@ -1992,6 +2040,8 @@ async function initFreshUserData(uid){
 // загрузить все данные вошедшего пользователя из Firestore в локальные переменные
 async function loadUserData(uid){
   needsFullWeekSave = false;
+  catalogDirty = false; categoriesDirty = false; templatesDirty = false;
+  removedCategoryLinkKeys.clear(); removedTemplateIds.clear();
   const metaSnap = await getDoc(userMetaDoc(uid));
   if(!metaSnap.exists()){
     await initFreshUserData(uid);
