@@ -1696,7 +1696,7 @@ function renderTemplatesTab(){
       del.className="del-btn"; del.textContent="✕"; del.title="Удалить из шаблона";
       del.onclick = ()=>{
         tpl.days[d].acts = tpl.days[d].acts.filter(x=>x.id!==a.id);
-        templatesDirty = true;
+        dirtyTemplateIds.add(currentTemplateId);
         renderAll();
       };
       row.appendChild(del);
@@ -1745,7 +1745,7 @@ document.getElementById("createTemplateBtn").addEventListener("click", ()=>{
   if(Object.values(templates).some(t=>t.name===name)){ showTopToast("Шаблон с таким названием уже есть."); return; }
   const id = Math.random().toString(36).slice(2);
   templates[id] = {name, days: blankWeekTemplate()};
-  templatesDirty = true;
+  dirtyTemplateIds.add(id);
   removedTemplateIds.delete(id);
   currentTemplateId = id;
   inp.value = "";
@@ -1762,7 +1762,7 @@ document.getElementById("deleteTemplateBtn").addEventListener("click", ()=>{
   if(!currentTemplateId) return;
   delete templates[currentTemplateId];
   removedTemplateIds.add(currentTemplateId);
-  templatesDirty = true;
+  dirtyTemplateIds.delete(currentTemplateId);
   currentTemplateId = null;
   renderAll();
 });
@@ -1791,7 +1791,7 @@ document.getElementById("tplAddBtn").addEventListener("click", ()=>{
   tplSelectedDays.forEach(d=>{
     tpl.days[d].acts.push(act(name,start,end));
   });
-  templatesDirty = true;
+  dirtyTemplateIds.add(currentTemplateId);
   document.getElementById("tplAddNewName").value="";
   renderAll();
 });
@@ -1910,7 +1910,10 @@ let needsFullWeekSave = false;
 // копией из памяти этой вкладки, если она открыта дольше, чем где-то ещё правили справочники.
 let catalogDirty = false;
 let categoriesDirty = false; // покрывает и categories, и categoryLinks — правятся на одной вкладке
-let templatesDirty = false;
+// id шаблонов, изменённых с последнего сохранения — пишем в облако ТОЛЬКО их (а не весь
+// templates целиком), иначе правки одного шаблона на одной вкладке рисковали затереться
+// устаревшей копией ДРУГОГО шаблона, случайно попавшего в то же сохранение с другой вкладки
+let dirtyTemplateIds = new Set();
 // ключи, удалённые из categoryLinks/templates с последнего сохранения — merge:true не удаляет
 // отсутствующие ключи карты сам по себе, поэтому для них нужно явно послать deleteField()
 let removedCategoryLinkKeys = new Set();
@@ -1959,14 +1962,17 @@ async function saveNow(){
       removedCategoryLinkKeys.forEach(k=>{ linksPatch[k] = deleteField(); });
       metaPatch.categoryLinks = linksPatch;
     }
-    if(templatesDirty){
-      const templatesPatch = {...templates};
+    if(dirtyTemplateIds.size>0 || removedTemplateIds.size>0){
+      // пишем только реально изменённые/удалённые шаблоны, а не templates целиком — другой,
+      // не тронутый в этой вкладке шаблон мог тем временем измениться в другой сессии
+      const templatesPatch = {};
+      dirtyTemplateIds.forEach(id=>{ if(templates[id]) templatesPatch[id] = templates[id]; });
       removedTemplateIds.forEach(id=>{ templatesPatch[id] = deleteField(); });
       metaPatch.templates = templatesPatch;
     }
     await setDoc(userMetaDoc(uid), metaPatch, {merge:true});
-    catalogDirty = false; categoriesDirty = false; templatesDirty = false;
-    removedCategoryLinkKeys.clear(); removedTemplateIds.clear();
+    catalogDirty = false; categoriesDirty = false;
+    removedCategoryLinkKeys.clear(); dirtyTemplateIds.clear(); removedTemplateIds.clear();
     if(needsFullWeekSave){
       // неделя только что создана (дублирование/шаблон/с нуля) — её ещё ни разу не было в
       // облаке, поэтому пишем целиком все 7 дней один раз, дальше переходим на point-запись
@@ -2040,8 +2046,8 @@ async function initFreshUserData(uid){
 // загрузить все данные вошедшего пользователя из Firestore в локальные переменные
 async function loadUserData(uid){
   needsFullWeekSave = false;
-  catalogDirty = false; categoriesDirty = false; templatesDirty = false;
-  removedCategoryLinkKeys.clear(); removedTemplateIds.clear();
+  catalogDirty = false; categoriesDirty = false;
+  removedCategoryLinkKeys.clear(); dirtyTemplateIds.clear(); removedTemplateIds.clear();
   const metaSnap = await getDoc(userMetaDoc(uid));
   if(!metaSnap.exists()){
     await initFreshUserData(uid);
