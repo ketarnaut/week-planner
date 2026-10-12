@@ -847,12 +847,11 @@ function renderDay(){
     const startInp = document.createElement("input");
     startInp.type="time"; startInp.value=a.start;
     startInp.onchange = ()=>{
-      if(!isValidTimeRange(startInp.value, a.end)){
-        showTopToast("Конец активности не может быть раньше начала.");
-        startInp.value = a.start;
-        return;
-      }
-      a.start = startInp.value; markDayDirty(); renderAll();
+      // сдвигаем конец на столько же, на сколько поменялось начало — длительность активности не меняется
+      const durMin = Math.round(duration(a)*60);
+      a.start = startInp.value;
+      a.end = toHM(toMin(a.start) + durMin);
+      markDayDirty(); renderAll();
     };
     startTd.appendChild(startInp);
     tr.appendChild(startTd);
@@ -861,12 +860,11 @@ function renderDay(){
     const endInp = document.createElement("input");
     endInp.type="time"; endInp.value=a.end;
     endInp.onchange = ()=>{
-      if(!isValidTimeRange(a.start, endInp.value)){
-        showTopToast("Конец активности не может быть раньше начала.");
-        endInp.value = a.end;
-        return;
-      }
-      a.end = endInp.value; markDayDirty(); renderAll();
+      // сдвигаем начало на столько же, на сколько поменялся конец — длительность активности не меняется
+      const durMin = Math.round(duration(a)*60);
+      a.end = endInp.value;
+      a.start = toHM(toMin(a.end) - durMin);
+      markDayDirty(); renderAll();
     };
     endTd.appendChild(endInp);
     tr.appendChild(endTd);
