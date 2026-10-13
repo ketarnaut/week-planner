@@ -89,6 +89,17 @@
     width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;
   }
   .del-btn:hover{background:var(--danger);color:#fff;}
+  .row-actions-cell{display:flex;align-items:center;gap:6px;white-space:nowrap;}
+  .move-date-btn{
+    font-size:10.5px;padding:3px 7px;border-radius:5px;white-space:nowrap;
+    border:1px solid var(--border);background:#fbfbfa;color:var(--muted);cursor:pointer;
+  }
+  .move-date-btn:hover{background:var(--accent-soft);color:var(--accent);}
+  .move-date-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  tr.move-cal-tr td{padding:10px 10px 12px;background:#fbfbf9;}
+  .move-cal{max-width:260px;}
+  .move-cal .cal-grid{margin-bottom:8px;}
+  .move-cal-close{width:100%;padding:5px;font-size:12px;}
   input[type=checkbox]{width:17px;height:17px;cursor:pointer;accent-color:var(--accent);}
   tr.done td{opacity:.45;}
   tr.done .name-cell select{text-decoration:line-through;}
@@ -336,7 +347,7 @@
         <div class="table-scroll">
           <table>
             <thead>
-              <tr><th style="width:5%">✓</th><th style="width:22%">Активность</th><th>Начало</th><th>Конец</th><th style="width:26%">Комментарий</th><th></th></tr>
+              <tr><th style="width:5%">✓</th><th style="width:9%"></th><th style="width:18%">Активность</th><th>Начало</th><th>Конец</th><th style="width:24%">Комментарий</th><th></th></tr>
             </thead>
             <tbody id="dayBody"></tbody>
           </table>
@@ -674,6 +685,7 @@ function openNewWeekPrompt(date, weekKey){
     ? "В этой неделе сейчас нет ни одной активности"
     : "Для этой недели план ещё не был внесён";
   document.getElementById("nwSkipBtn").textContent = alreadyExists ? "Оставить пустой" : "Пока не вносить";
+  document.getElementById("nwSkipBtn").style.display = ""; // сброс — moveActivityToDate может скрыть её отдельно
   document.getElementById("newWeekRange").textContent = fmtWeekRange(mondayOf(date));
   renderTemplateModalButtons();
   document.getElementById("newWeekModal").style.display = "flex";
@@ -689,11 +701,11 @@ function renderTemplateModalButtons(){
     btn.textContent = `Шаблон «${tpl.name}»`;
     btn.onclick = ()=>{
       if(!pendingNewWeek) return;
-      const {date, weekKey} = pendingNewWeek;
+      const {date, weekKey, afterCreate} = pendingNewWeek;
       weeks[weekKey] = cloneWeekAsTemplate(tpl.days);
       weeksNeedingFullSave.add(weekKey);
       closeNewWeekPrompt();
-      activateWeek(date, weekKey);
+      if(afterCreate) afterCreate(); else activateWeek(date, weekKey);
     };
     wrap.appendChild(btn);
   });
@@ -715,6 +727,131 @@ function goToDate(date){
   }
 }
 function goToToday(){ goToDate(new Date()); }
+
+// ==================== перенос активности на другую дату (мини-календарь под строкой) ====================
+// id активности, для которой сейчас открыт мини-календарь переноса (null — все закрыты).
+// Переживает renderAll(), поэтому навигация по месяцам/перенос несколько раз подряд не закрывают попап.
+let moveCalendarForActId = null;
+let moveCalendarViewMonth = new Date();
+
+// найти активность по id в ЛЮБОЙ известной неделе/дне — после одного-двух переносов активность
+// уже не там, откуда начали, а id у неё не меняется, так что это надёжный способ найти её заново
+function findActGlobal(actId){
+  for(const wk of Object.keys(weeks)){
+    for(const d of DAYS){
+      const acts = (weeks[wk][d] && weeks[wk][d].acts) || [];
+      const found = acts.find(x=>x.id===actId);
+      if(found) return {weekKey: wk, day: d};
+    }
+  }
+  return null;
+}
+
+// переместить активность из исходного дня в целевой — вызывается, когда целевая неделя уже
+// точно существует и не пуста (либо только что создана через попап)
+function completeActivityMove(actId, sourceLoc, targetWeekKey, targetDayName, targetDate){
+  const srcActs = weeks[sourceLoc.weekKey][sourceLoc.day].acts;
+  const idx = srcActs.findIndex(x=>x.id===actId);
+  if(idx===-1) return; // на всякий случай — вдруг уже перенесена/удалена
+  const [act] = srcActs.splice(idx,1);
+  weeks[targetWeekKey][targetDayName].acts.push(act);
+  markDayDirtyFor(sourceLoc.weekKey, sourceLoc.day);
+  markDayDirtyFor(targetWeekKey, targetDayName);
+  activateWeek(targetDate, targetWeekKey); // переключает вид на целевой день и вызывает renderAll()
+}
+
+// клик по дню в мини-календаре переноса. Если для целевой недели ещё нет плана (или он пуст) —
+// сначала спрашиваем, что с ней сделать (как при обычной навигации по календарю), и довершаем
+// перенос уже после того, как неделя будет готова.
+function moveActivityToDate(actId, targetDate){
+  const loc = findActGlobal(actId);
+  if(!loc) return;
+  const targetWeekKey = isoDate(mondayOf(targetDate));
+  const targetDayName = DAYS[(targetDate.getDay()+6)%7];
+  if(loc.weekKey===targetWeekKey && loc.day===targetDayName){
+    activateWeek(targetDate, targetWeekKey); // тот же день — просто показать его
+    return;
+  }
+  const weekReady = weeks[targetWeekKey] && !isWeekEmpty(weeks[targetWeekKey]);
+  if(weekReady){
+    completeActivityMove(actId, loc, targetWeekKey, targetDayName, targetDate);
+  } else {
+    openNewWeekPrompt(targetDate, targetWeekKey);
+    if(pendingNewWeek){
+      pendingNewWeek.afterCreate = ()=> completeActivityMove(actId, loc, targetWeekKey, targetDayName, targetDate);
+      // «Пока не вносить» для совсем новой недели не создаёт её — переносить тогда некуда,
+      // поэтому для переноса эта кнопка скрыта (для уже существующей, но пустой — остаётся:
+      // открыть её как есть и завершить перенос в неё можно)
+      document.getElementById("nwSkipBtn").style.display = pendingNewWeek.alreadyExists ? "" : "none";
+    }
+  }
+}
+
+function buildMoveMiniCalendar(actId){
+  const wrap = document.createElement("div");
+  wrap.className = "move-cal";
+
+  const header = document.createElement("div");
+  header.className = "cal-header";
+  const prevBtn = document.createElement("button");
+  prevBtn.type="button"; prevBtn.className="cal-nav"; prevBtn.textContent="‹";
+  prevBtn.onclick = ()=>{
+    moveCalendarViewMonth = new Date(moveCalendarViewMonth.getFullYear(), moveCalendarViewMonth.getMonth()-1, 1);
+    renderAll();
+  };
+  const label = document.createElement("span");
+  label.textContent = MONTHS_FULL[moveCalendarViewMonth.getMonth()] + " " + moveCalendarViewMonth.getFullYear();
+  const nextBtn = document.createElement("button");
+  nextBtn.type="button"; nextBtn.className="cal-nav"; nextBtn.textContent="›";
+  nextBtn.onclick = ()=>{
+    moveCalendarViewMonth = new Date(moveCalendarViewMonth.getFullYear(), moveCalendarViewMonth.getMonth()+1, 1);
+    renderAll();
+  };
+  header.appendChild(prevBtn); header.appendChild(label); header.appendChild(nextBtn);
+  wrap.appendChild(header);
+
+  const grid = document.createElement("div");
+  grid.className = "cal-grid";
+  grid.appendChild(document.createElement("div"));
+  WEEKDAY_SHORT.forEach(w=>{
+    const el = document.createElement("div"); el.className="cal-dow"; el.textContent=w; grid.appendChild(el);
+  });
+
+  const monthStart = new Date(moveCalendarViewMonth.getFullYear(), moveCalendarViewMonth.getMonth(), 1);
+  const gridStart = mondayOf(monthStart);
+  const realToday = new Date();
+  const loc = findActGlobal(actId);
+  const actDate = loc ? addDays(parseISODate(loc.weekKey), DAYS.indexOf(loc.day)) : null;
+
+  for(let row=0; row<6; row++){
+    const rowStart = addDays(gridStart, row*7);
+    const wknumEl = document.createElement("div");
+    wknumEl.className = "cal-wknum";
+    wknumEl.textContent = isoWeekNumber(rowStart);
+    grid.appendChild(wknumEl);
+    for(let col=0; col<7; col++){
+      const date = addDays(rowStart, col);
+      const cell = document.createElement("div");
+      let cls = "cal-day";
+      if(date.getMonth()!==moveCalendarViewMonth.getMonth()) cls += " other-month";
+      if(sameDate(date, realToday)) cls += " today";
+      if(actDate && sameDate(date, actDate)) cls += " selected";
+      cell.className = cls;
+      cell.textContent = date.getDate();
+      cell.onclick = ()=>{ moveActivityToDate(actId, date); };
+      grid.appendChild(cell);
+    }
+  }
+  wrap.appendChild(grid);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type="button"; closeBtn.className="btn secondary move-cal-close";
+  closeBtn.textContent="Закрыть";
+  closeBtn.onclick = ()=>{ moveCalendarForActId = null; renderAll(); };
+  wrap.appendChild(closeBtn);
+
+  return wrap;
+}
 
 function daysContaining(name){
   return DAYS.filter(d=>{
@@ -813,6 +950,9 @@ function renderDay(){
   const overlapIds = overlappingIds(acts);
   const body = document.getElementById("dayBody");
   body.innerHTML = "";
+  // дата текущего открытого дня — одна и та же для всех строк, нужна для кнопки «перенести»
+  const currentRowDate = addDays(parseISODate(currentWeekKey), DAYS.indexOf(currentDay));
+  const rowDateLabel = pad2(currentRowDate.getDate()) + "." + pad2(currentRowDate.getMonth()+1);
   acts.forEach((a, idx)=>{
     const tr = document.createElement("tr");
     let cls = a.done ? "done" : "";
@@ -826,6 +966,24 @@ function renderDay(){
     doneCb.onchange = ()=>{ a.done = doneCb.checked; markDayDirty(); renderAll(); };
     doneTd.appendChild(doneCb);
     tr.appendChild(doneTd);
+
+    const dateTd = document.createElement("td");
+    const moveBtn = document.createElement("button");
+    moveBtn.type = "button";
+    moveBtn.className = "move-date-btn" + (moveCalendarForActId===a.id ? " active" : "");
+    moveBtn.textContent = rowDateLabel;
+    moveBtn.title = "Перенести на другой день";
+    moveBtn.onclick = ()=>{
+      if(moveCalendarForActId===a.id){
+        moveCalendarForActId = null;
+      } else {
+        moveCalendarForActId = a.id;
+        moveCalendarViewMonth = new Date(currentRowDate.getFullYear(), currentRowDate.getMonth(), 1);
+      }
+      renderAll();
+    };
+    dateTd.appendChild(moveBtn);
+    tr.appendChild(dateTd);
 
     const nameTd = document.createElement("td");
     nameTd.className = "name-cell";
@@ -894,6 +1052,7 @@ function renderDay(){
     tr.appendChild(commentTd);
 
     const delTd = document.createElement("td");
+    delTd.className = "row-actions-cell";
     const delBtn = document.createElement("button");
     delBtn.className="del-btn"; delBtn.textContent="✕";
     delBtn.onclick = ()=>{
@@ -907,12 +1066,23 @@ function renderDay(){
     body.appendChild(tr);
     autosize(commentInp);
 
+    // мини-календарь переноса — показываем сразу под строкой активности, если он открыт для неё
+    if(moveCalendarForActId === a.id){
+      const calTr = document.createElement("tr");
+      calTr.className = "move-cal-tr";
+      const calTd = document.createElement("td");
+      calTd.colSpan = 7;
+      calTd.appendChild(buildMoveMiniCalendar(a.id));
+      calTr.appendChild(calTd);
+      body.appendChild(calTr);
+    }
+
     // вложенные задачи без времени, прикреплённые к этому слоту — блок показываем, только если задачи есть
     if((a.subtasks||[]).length){
       const subTr = document.createElement("tr");
       subTr.className = "subtask-tr";
       const subTd = document.createElement("td");
-      subTd.colSpan = 6;
+      subTd.colSpan = 7;
       const subWrap = document.createElement("div");
       subWrap.className = "subtask-wrap";
       const subCommentEls = [];
@@ -972,7 +1142,7 @@ function renderDay(){
       const gapTr = document.createElement("tr");
       gapTr.className = "gap-row";
       const gapTd = document.createElement("td");
-      gapTd.colSpan = 6;
+      gapTd.colSpan = 7;
       const hrs = gapMin/60;
       gapTd.innerHTML = `<div class="gap-bar">Отдых · ${a.end}–${next.start} (${hrs.toFixed(2)}ч)</div>`;
       gapTr.appendChild(gapTd);
@@ -1834,28 +2004,31 @@ document.getElementById("photoLightbox").addEventListener("click", ()=>{
 
 document.getElementById("nwSkipBtn").addEventListener("click", ()=>{
   if(!pendingNewWeek) return;
-  const {date, weekKey, alreadyExists} = pendingNewWeek;
+  const {date, weekKey, alreadyExists, afterCreate} = pendingNewWeek;
   closeNewWeekPrompt();
   // Неделя уже существовала (просто пуста) — открываем её как есть, ничего не создаём и не
   // меняем. Неделя ещё не заведена вовсе — «Пока не вносить» значит буквально ничего не
-  // делать: не создавать её и никуда не переходить, остаёмся там, где были.
-  if(alreadyExists) activateWeek(date, weekKey);
+  // делать: не создавать её и никуда не переходить, остаёмся там, где были. (Если это был
+  // перенос активности на совсем новую неделю, эта кнопка вообще скрыта — см. moveActivityToDate.)
+  if(alreadyExists){
+    if(afterCreate) afterCreate(); else activateWeek(date, weekKey);
+  }
 });
 document.getElementById("nwDuplicateBtn").addEventListener("click", ()=>{
   if(!pendingNewWeek) return;
-  const {date, weekKey} = pendingNewWeek;
+  const {date, weekKey, afterCreate} = pendingNewWeek;
   getOrCreateWeek(weekKey); // клонирует ближайшую известную неделю и сохраняет её под weekKey
   weeksNeedingFullSave.add(weekKey);
   closeNewWeekPrompt();
-  activateWeek(date, weekKey);
+  if(afterCreate) afterCreate(); else activateWeek(date, weekKey);
 });
 document.getElementById("nwBlankBtn").addEventListener("click", ()=>{
   if(!pendingNewWeek) return;
-  const {date, weekKey} = pendingNewWeek;
+  const {date, weekKey, afterCreate} = pendingNewWeek;
   weeks[weekKey] = blankWeekTemplate();
   weeksNeedingFullSave.add(weekKey);
   closeNewWeekPrompt();
-  activateWeek(date, weekKey);
+  if(afterCreate) afterCreate(); else activateWeek(date, weekKey);
 });
 document.getElementById("newWeekModal").addEventListener("click", (e)=>{
   if(e.target.id==="newWeekModal") closeNewWeekPrompt();
@@ -1915,7 +2088,13 @@ let weeksNeedingFullSave = new Set();
 // истечения паузы, saveNow() сохранил бы уже ДРУГОЙ (текущий на тот момент) день, а реальная
 // правка осталась бы только в памяти вкладки и потерялась бы при перезагрузке/закрытии.
 let dirtyDayKeys = new Set();
-function markDayDirty(){ dirtyDayKeys.add(currentWeekKey + "||" + currentDay); }
+// общий вариант — для переноса активности между днями РАЗНЫХ недель нужно уметь отметить
+// дирти день не только в currentWeekKey
+function markDayDirtyFor(weekKey, day){ dirtyDayKeys.add(weekKey + "||" + day); }
+// по умолчанию отмечает текущий открытый день; день можно передать явно — например,
+// при переносе активности на другой день той же недели нужно отметить дирти оба дня,
+// а не только currentDay (источник отмечается обычным вызовом без аргумента)
+function markDayDirty(day){ markDayDirtyFor(currentWeekKey, day || currentDay); }
 
 // id шаблонов, изменённых с последнего сохранения — пишем в облако ТОЛЬКО их (а не весь
 // templates целиком), иначе правки одного шаблона на одной вкладке рисковали затереться
