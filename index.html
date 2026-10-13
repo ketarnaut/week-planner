@@ -504,6 +504,17 @@
   <img id="photoLightboxImg" alt="Фото из дневника">
 </div>
 
+<div class="modal-overlay" id="timeChangeModal" style="display:none;">
+  <div class="modal-box">
+    <h3>Как изменить время?</h3>
+    <div class="hint" style="margin-top:0;margin-bottom:0;">Можно сдвинуть всю активность целиком (длительность останется прежней) или поменять только это время — тогда изменится продолжительность.</div>
+    <div class="modal-actions">
+      <button class="btn" id="tcShiftBtn" type="button">Сместить (длительность не меняется)</button>
+      <button class="btn secondary" id="tcDurationBtn" type="button">Изменить продолжительность</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 // ==================== Firebase ====================
 // Данные, полученные в консоли Firebase при создании веб-приложения
@@ -713,6 +724,23 @@ function renderTemplateModalButtons(){
 function closeNewWeekPrompt(){
   pendingNewWeek = null;
   document.getElementById("newWeekModal").style.display = "none";
+}
+
+// ==================== попап выбора при правке начала/конца активности ====================
+// «Сместить» — сдвигает второй конец, сохраняя длительность (новое поведение).
+// «Изменить продолжительность» — меняет только отредактированное поле, как было изначально
+// (с проверкой, что диапазон остаётся корректным).
+let pendingTimeChange = null; // {act, field: "start"|"end", oldValue, newValue, inputEl}
+
+function openTimeChangeModal(act, field, oldValue, newValue, inputEl){
+  if(oldValue === newValue) return; // ничего не поменялось — спрашивать нечего
+  pendingTimeChange = {act, field, oldValue, newValue, inputEl};
+  document.getElementById("timeChangeModal").style.display = "flex";
+}
+function closeTimeChangeModal(revert){
+  if(revert && pendingTimeChange) pendingTimeChange.inputEl.value = pendingTimeChange.oldValue;
+  pendingTimeChange = null;
+  document.getElementById("timeChangeModal").style.display = "none";
 }
 
 // перейти к конкретной календарной дате (и, соответственно, к её неделе). Если для этой
@@ -1005,11 +1033,7 @@ function renderDay(){
     const startInp = document.createElement("input");
     startInp.type="time"; startInp.value=a.start;
     startInp.onchange = ()=>{
-      // сдвигаем конец на столько же, на сколько поменялось начало — длительность активности не меняется
-      const durMin = Math.round(duration(a)*60);
-      a.start = startInp.value;
-      a.end = toHM(toMin(a.start) + durMin);
-      markDayDirty(); renderAll();
+      openTimeChangeModal(a, "start", a.start, startInp.value, startInp);
     };
     startTd.appendChild(startInp);
     tr.appendChild(startTd);
@@ -1018,11 +1042,7 @@ function renderDay(){
     const endInp = document.createElement("input");
     endInp.type="time"; endInp.value=a.end;
     endInp.onchange = ()=>{
-      // сдвигаем начало на столько же, на сколько поменялся конец — длительность активности не меняется
-      const durMin = Math.round(duration(a)*60);
-      a.end = endInp.value;
-      a.start = toHM(toMin(a.end) - durMin);
-      markDayDirty(); renderAll();
+      openTimeChangeModal(a, "end", a.end, endInp.value, endInp);
     };
     endTd.appendChild(endInp);
     tr.appendChild(endTd);
@@ -2032,6 +2052,43 @@ document.getElementById("nwBlankBtn").addEventListener("click", ()=>{
 });
 document.getElementById("newWeekModal").addEventListener("click", (e)=>{
   if(e.target.id==="newWeekModal") closeNewWeekPrompt();
+});
+
+document.getElementById("tcShiftBtn").addEventListener("click", ()=>{
+  if(!pendingTimeChange) return;
+  const {act, field, newValue} = pendingTimeChange;
+  const durMin = Math.round(duration(act)*60);
+  if(field==="start"){
+    act.start = newValue;
+    act.end = toHM(toMin(act.start) + durMin);
+  } else {
+    act.end = newValue;
+    act.start = toHM(toMin(act.end) - durMin);
+  }
+  pendingTimeChange = null;
+  document.getElementById("timeChangeModal").style.display = "none";
+  markDayDirty(); renderAll();
+});
+document.getElementById("tcDurationBtn").addEventListener("click", ()=>{
+  if(!pendingTimeChange) return;
+  const {act, field, newValue, inputEl, oldValue} = pendingTimeChange;
+  const candidateStart = field==="start" ? newValue : act.start;
+  const candidateEnd = field==="end" ? newValue : act.end;
+  if(!isValidTimeRange(candidateStart, candidateEnd)){
+    showTopToast("Конец активности не может быть раньше начала.");
+    inputEl.value = oldValue;
+    pendingTimeChange = null;
+    document.getElementById("timeChangeModal").style.display = "none";
+    return;
+  }
+  act.start = candidateStart;
+  act.end = candidateEnd;
+  pendingTimeChange = null;
+  document.getElementById("timeChangeModal").style.display = "none";
+  markDayDirty(); renderAll();
+});
+document.getElementById("timeChangeModal").addEventListener("click", (e)=>{
+  if(e.target.id==="timeChangeModal") closeTimeChangeModal(true);
 });
 
 document.querySelectorAll("#scopeToggle .scope-btn").forEach(btn=>{
