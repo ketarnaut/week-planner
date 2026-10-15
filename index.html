@@ -193,6 +193,21 @@
     transition:all .15s;
   }
   .scope-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  #matrixTable{border-collapse:collapse;font-size:11.5px;}
+  #matrixTable th, #matrixTable td{border:1px solid var(--border);padding:3px 5px;text-align:center;white-space:nowrap;}
+  .matrix-corner{position:sticky;left:0;background:var(--card);text-align:left!important;z-index:2;min-width:120px;}
+  .matrix-name-td{position:sticky;left:0;background:var(--card);text-align:left!important;color:var(--text);min-width:120px;max-width:160px;overflow:hidden;text-overflow:ellipsis;}
+  .matrix-date-th{font-weight:500;color:var(--muted);min-width:26px;}
+  .matrix-dow{font-size:9px;color:var(--muted);font-weight:400;}
+  .matrix-date-th.weekend, td.matrix-cell.weekend{background:var(--accent-soft);}
+  .matrix-date-th.today-col, td.matrix-cell.today-col{box-shadow:inset 0 0 0 1.5px var(--accent);}
+  .matrix-cat-row td{
+    background:#f1efe9;color:var(--muted);font-weight:600;text-align:left!important;
+    position:static;font-size:11px;letter-spacing:.2px;padding:4px 6px;
+  }
+  td.matrix-cell.done{background:var(--accent)!important;color:#fff;font-weight:700;}
+  .matrix-fact{color:var(--muted);font-weight:400;}
+  td.matrix-cell.done .matrix-fact{color:#e4ede9;}
   .hint{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5;}
   .below-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);
     display:flex;gap:22px;flex-wrap:wrap;}
@@ -343,27 +358,46 @@
       </div>
 
       <div class="card">
-        <div class="day-total" id="dayTotal"></div>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr><th style="width:5%">✓</th><th style="width:9%"></th><th style="width:18%">Активность</th><th>Начало</th><th>Конец</th><th style="width:24%">Комментарий</th><th></th></tr>
-            </thead>
-            <tbody id="dayBody"></tbody>
-          </table>
+        <div class="scope-toggle" id="mainViewToggle">
+          <button class="scope-btn active" id="mainViewDayBtn" type="button">День</button>
+          <button class="scope-btn" id="mainViewMatrixBtn" type="button">Матрица месяца</button>
         </div>
-        <div id="belowRows" class="below-wrap"></div>
-        <div class="add-row">
-          <div class="name-wrap">
-            <select id="addSelect"></select>
-            <input type="text" id="addNewName" class="name-input" placeholder="Название новой активности" style="display:none;margin-top:6px;">
+
+        <div id="dayViewContainer">
+          <div class="day-total" id="dayTotal"></div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th style="width:5%">✓</th><th style="width:9%"></th><th style="width:18%">Активность</th><th>Начало</th><th>Конец</th><th style="width:24%">Комментарий</th><th></th></tr>
+              </thead>
+              <tbody id="dayBody"></tbody>
+            </table>
           </div>
-          <input type="time" id="addStart" value="09:00">
-        <input type="time" id="addEnd" value="10:00">
-        <button class="btn" id="addBtn">Добавить</button>
+          <div id="belowRows" class="below-wrap"></div>
+          <div class="add-row">
+            <div class="name-wrap">
+              <select id="addSelect"></select>
+              <input type="text" id="addNewName" class="name-input" placeholder="Название новой активности" style="display:none;margin-top:6px;">
+            </div>
+            <input type="time" id="addStart" value="09:00">
+          <input type="time" id="addEnd" value="10:00">
+          <button class="btn" id="addBtn">Добавить</button>
+        </div>
+        <div class="hint">Выбери «+ Новая активность», чтобы вписать своё название — оно попадёт в справочник и будет доступно во всех днях. Кнопка «+ задача» рядом с комментарием добавляет к слоту задачу без конкретного времени (просто впиши название, например «Сторис» в «Блог»).</div>
+        </div>
+
+        <div id="matrixViewContainer" style="display:none;">
+          <div class="cal-header">
+            <button class="cal-nav" id="matrixPrevMonth" type="button">‹</button>
+            <span id="matrixMonthLabel"></span>
+            <button class="cal-nav" id="matrixNextMonth" type="button">›</button>
+          </div>
+          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё).</div>
+          <div class="table-scroll">
+            <table id="matrixTable"></table>
+          </div>
+        </div>
       </div>
-      <div class="hint">Выбери «+ Новая активность», чтобы вписать своё название — оно попадёт в справочник и будет доступно во всех днях. Кнопка «+ задача» рядом с комментарием добавляет к слоту задачу без конкретного времени (просто впиши название, например «Сторис» в «Блог»).</div>
-    </div>
     </div>
 
     <div id="tabPanelDiary" style="display:none;">
@@ -1471,6 +1505,142 @@ function renderCalendar(){
   }
 }
 
+// ==================== альтернативный вид «Матрица месяца» ====================
+// строки — активности, встречавшиеся хоть раз в выбранном месяце (сгруппированы по
+// категории), столбцы — дни месяца, в ячейке — часы план/факт. Месяц берётся из
+// calendarViewMonth — того же состояния, что и у календаря справа, чтобы навигация
+// по месяцу была единой.
+let mainViewMode = "day"; // "day" | "matrix"
+
+function setMainViewMode(mode){
+  mainViewMode = mode;
+  document.getElementById("dayViewContainer").style.display = mode==="day" ? "block" : "none";
+  document.getElementById("matrixViewContainer").style.display = mode==="matrix" ? "block" : "none";
+  document.getElementById("mainViewDayBtn").classList.toggle("active", mode==="day");
+  document.getElementById("mainViewMatrixBtn").classList.toggle("active", mode==="matrix");
+  if(mode==="matrix") renderMatrixView();
+}
+
+// компактный формат часов: 1.5 → "1.5", 2.00 → "2" (без незначащих нулей)
+function fmtH(h){ return String(Math.round(h*100)/100); }
+
+function renderMatrixView(){
+  document.getElementById("matrixMonthLabel").textContent =
+    MONTHS_FULL[calendarViewMonth.getMonth()] + " " + calendarViewMonth.getFullYear();
+
+  const year = calendarViewMonth.getFullYear();
+  const month = calendarViewMonth.getMonth();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const dates = [];
+  for(let d=1; d<=daysInMonth; d++) dates.push(new Date(year, month, d));
+
+  // { activityName: { category, byDate: { "ISO-дата": {plan, fact} } } }
+  const data = {};
+  dates.forEach(date=>{
+    const weekKey = isoDate(mondayOf(date));
+    const dayName = DAYS[(date.getDay()+6)%7];
+    const dayData = weeks[weekKey] && weeks[weekKey][dayName];
+    if(!dayData) return;
+    const iso = isoDate(date);
+    (dayData.acts||[]).forEach(a=>{
+      const h = duration(a);
+      if(!data[a.name]) data[a.name] = {category: categoryOf(a.name), byDate: {}};
+      const cell = data[a.name].byDate[iso] || {plan:0, fact:0};
+      cell.plan += h;
+      if(a.done) cell.fact += h;
+      data[a.name].byDate[iso] = cell;
+    });
+  });
+
+  // защита: строка/категория не попадает в таблицу, если по факту у неё нет ни одного
+  // ненулевого часа в этом месяце (например, активность была добавлена и тут же удалена) —
+  // без этого могла бы остаться пустая строка или заголовок категории без единой активности
+  const names = Object.keys(data).filter(name=>
+    Object.values(data[name].byDate).some(c=>c.plan>0.001)
+  );
+  // порядок строк: по категории (в порядке справочника категорий, «Без категории» — в конце),
+  // внутри категории — по порядку в справочнике активностей
+  const catOrder = [...categories, NO_CATEGORY];
+  names.sort((n1,n2)=>{
+    const c1 = catOrder.indexOf(data[n1].category), c2 = catOrder.indexOf(data[n2].category);
+    const c1safe = c1<0 ? catOrder.length : c1, c2safe = c2<0 ? catOrder.length : c2;
+    if(c1safe!==c2safe) return c1safe - c2safe;
+    return catalog.indexOf(n1) - catalog.indexOf(n2);
+  });
+
+  const table = document.getElementById("matrixTable");
+  table.innerHTML = "";
+  const realToday = new Date();
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.textContent = "Активность";
+  corner.className = "matrix-corner";
+  headRow.appendChild(corner);
+  dates.forEach(date=>{
+    const th = document.createElement("th");
+    const isWeekend = date.getDay()===0 || date.getDay()===6;
+    th.className = "matrix-date-th" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"");
+    th.innerHTML = `<div>${date.getDate()}</div><div class="matrix-dow">${WEEKDAY_SHORT[(date.getDay()+6)%7]}</div>`;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  if(names.length===0){
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = dates.length+1;
+    td.className = "hint";
+    td.textContent = "В этом месяце пока нет активностей.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    let lastCat = null;
+    names.forEach(name=>{
+      const cat = data[name].category;
+      if(cat !== lastCat){
+        lastCat = cat;
+        const catTr = document.createElement("tr");
+        catTr.className = "matrix-cat-row";
+        const catTd = document.createElement("td");
+        catTd.colSpan = dates.length+1;
+        catTd.textContent = cat;
+        catTr.appendChild(catTd);
+        tbody.appendChild(catTr);
+      }
+      const tr = document.createElement("tr");
+      const nameTd = document.createElement("td");
+      nameTd.className = "matrix-name-td";
+      nameTd.textContent = name;
+      tr.appendChild(nameTd);
+      dates.forEach(date=>{
+        const iso = isoDate(date);
+        const cell = data[name].byDate[iso];
+        const isWeekend = date.getDay()===0 || date.getDay()===6;
+        const td = document.createElement("td");
+        td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"");
+        if(cell && cell.plan>0){
+          const planStr = fmtH(cell.plan);
+          if(cell.fact>0 && Math.abs(cell.fact-cell.plan)>0.001){
+            td.innerHTML = `${planStr}<span class="matrix-fact">/${fmtH(cell.fact)}</span>`;
+          } else if(cell.fact>0){
+            td.textContent = planStr;
+            td.classList.add("done");
+          } else {
+            td.textContent = planStr;
+          }
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+  table.appendChild(tbody);
+}
+
 function renderAll(){
   renderDay();
   renderScopeToggle();
@@ -1480,6 +1650,7 @@ function renderAll(){
   renderCalendar();
   renderTabs();
   renderTabPanels();
+  if(mainViewMode==="matrix") renderMatrixView();
   scheduleSave();
 }
 
@@ -1993,11 +2164,25 @@ document.getElementById("tplAddBtn").addEventListener("click", ()=>{
 document.getElementById("calPrevMonth").addEventListener("click", ()=>{
   calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()-1, 1);
   renderCalendar();
+  if(mainViewMode==="matrix") renderMatrixView();
 });
 document.getElementById("calNextMonth").addEventListener("click", ()=>{
   calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()+1, 1);
   renderCalendar();
+  if(mainViewMode==="matrix") renderMatrixView();
 });
+document.getElementById("matrixPrevMonth").addEventListener("click", ()=>{
+  calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()-1, 1);
+  renderCalendar();
+  renderMatrixView();
+});
+document.getElementById("matrixNextMonth").addEventListener("click", ()=>{
+  calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()+1, 1);
+  renderCalendar();
+  renderMatrixView();
+});
+document.getElementById("mainViewDayBtn").addEventListener("click", ()=> setMainViewMode("day"));
+document.getElementById("mainViewMatrixBtn").addEventListener("click", ()=> setMainViewMode("matrix"));
 document.getElementById("calTodayBtn").addEventListener("click", ()=>{
   goToToday();
 });
