@@ -234,6 +234,7 @@
     font-family:inherit;background:#fbfbfa;width:100%;margin-bottom:8px;color:var(--text);
   }
   .auth-error{color:var(--danger);font-size:12.5px;margin-bottom:8px;}
+  .auth-error.ok{color:#2e7d4f;}
   .auth-switch{font-size:12px;color:var(--muted);text-align:center;margin-top:10px;}
   .auth-switch a{color:var(--accent);cursor:pointer;text-decoration:underline;}
   .loading-screen{
@@ -335,6 +336,7 @@
       <button class="btn" id="authSubmitBtn" type="button">Войти</button>
     </div>
     <div class="auth-switch" id="authSwitch">Нет аккаунта? <a id="authSwitchLink">Зарегистрироваться</a></div>
+    <div class="auth-switch" id="authResetRow"><a id="authResetLink">Забыли пароль?</a></div>
   </div>
 </div>
 
@@ -571,7 +573,7 @@ const firebaseConfig = {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-  createUserWithEmailAndPassword, signOut
+  createUserWithEmailAndPassword, signOut, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp, deleteField
@@ -2708,13 +2710,35 @@ function renderAuthMode(){
   document.getElementById("authSwitch").innerHTML = authMode==="login"
     ? `Нет аккаунта? <a id="authSwitchLink">Зарегистрироваться</a>`
     : `Уже есть аккаунт? <a id="authSwitchLink">Войти</a>`;
+  document.getElementById("authResetRow").style.display = authMode==="login" ? "" : "none";
   document.getElementById("authSwitchLink").addEventListener("click", ()=>{
     authMode = authMode==="login" ? "signup" : "login";
-    document.getElementById("authError").style.display = "none";
+    showAuthMessage("");
     renderAuthMode();
   });
 }
 renderAuthMode();
+
+// одно поле под формой для ошибок и для подтверждений (ok=true — зелёным)
+function showAuthMessage(text, ok=false){
+  const el = document.getElementById("authError");
+  el.textContent = text;
+  el.classList.toggle("ok", ok);
+  el.style.display = text ? "block" : "none";
+}
+
+// «Забыли пароль?» — Firebase шлёт на email письмо со ссылкой для задания нового пароля
+document.getElementById("authResetLink").addEventListener("click", async ()=>{
+  const email = document.getElementById("authEmail").value.trim();
+  if(!email){ showAuthMessage("Введи email — пришлём на него ссылку для сброса пароля."); return; }
+  try{
+    auth.languageCode = "ru";
+    await sendPasswordResetEmail(auth, email);
+    showAuthMessage("Если такой аккаунт есть, письмо со ссылкой для сброса пароля уже отправлено на " + email + ". Проверь и папку «Спам».", true);
+  }catch(err){
+    showAuthMessage(authErrorMessage(err));
+  }
+});
 
 function authErrorMessage(err){
   const code = err && err.code;
@@ -2733,10 +2757,9 @@ function authErrorMessage(err){
 document.getElementById("authSubmitBtn").addEventListener("click", async ()=>{
   const email = document.getElementById("authEmail").value.trim();
   const password = document.getElementById("authPassword").value;
-  const errEl = document.getElementById("authError");
-  errEl.style.display = "none";
+  showAuthMessage("");
   if(!email || !password){
-    errEl.textContent = "Заполни email и пароль."; errEl.style.display = "block"; return;
+    showAuthMessage("Заполни email и пароль."); return;
   }
   try{
     if(authMode==="login"){
@@ -2746,8 +2769,7 @@ document.getElementById("authSubmitBtn").addEventListener("click", async ()=>{
     }
     // дальше подхватит onAuthStateChanged ниже
   }catch(err){
-    errEl.textContent = authErrorMessage(err);
-    errEl.style.display = "block";
+    showAuthMessage(authErrorMessage(err));
   }
 });
 
