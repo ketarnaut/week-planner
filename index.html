@@ -207,6 +207,10 @@
   }
   td.matrix-cell.done{background:var(--accent)!important;color:#fff;font-weight:700;}
   .matrix-fact{color:var(--muted);font-weight:400;}
+  .matrix-total-th{font-weight:600;color:var(--text);min-width:64px;border-left:2px solid var(--accent)!important;}
+  .matrix-total-td{font-weight:600;color:var(--text);background:#f1efe9;border-left:2px solid var(--accent)!important;}
+  tr.matrix-free-row td{background:#fbdce8!important;color:#a24d72;border-top:2px solid #e8b4c8;}
+  tr.matrix-free-row td.matrix-name-td{font-weight:600;}
   td.matrix-cell.done .matrix-fact{color:#e4ede9;}
   .hint{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5;}
   .below-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);
@@ -392,7 +396,7 @@
             <span id="matrixMonthLabel"></span>
             <button class="cal-nav" id="matrixNextMonth" type="button">›</button>
           </div>
-          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё).</div>
+          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё). «Итого» справа — сделано/запланировано за месяц. Розовая строка «Свободно» — свободные часы по плану/реально (реально — по галочкам, только по сегодняшний день).</div>
           <div class="table-scroll">
             <table id="matrixTable"></table>
           </div>
@@ -1536,14 +1540,20 @@ function renderMatrixView(){
 
   // { activityName: { category, byDate: { "ISO-дата": {plan, fact} } } }
   const data = {};
+  // суммарно по дню (все активности) — для строки свободного времени внизу; есть только у
+  // дней, для которых заведён план недели
+  const dayTotals = {};
   dates.forEach(date=>{
     const weekKey = isoDate(mondayOf(date));
     const dayName = DAYS[(date.getDay()+6)%7];
     const dayData = weeks[weekKey] && weeks[weekKey][dayName];
     if(!dayData) return;
     const iso = isoDate(date);
+    dayTotals[iso] = {plan:0, fact:0};
     (dayData.acts||[]).forEach(a=>{
       const h = duration(a);
+      dayTotals[iso].plan += h;
+      if(a.done) dayTotals[iso].fact += h;
       if(!data[a.name]) data[a.name] = {category: categoryOf(a.name), byDate: {}};
       const cell = data[a.name].byDate[iso] || {plan:0, fact:0};
       cell.plan += h;
@@ -1585,6 +1595,10 @@ function renderMatrixView(){
     th.innerHTML = `<div>${date.getDate()}</div><div class="matrix-dow">${WEEKDAY_SHORT[(date.getDay()+6)%7]}</div>`;
     headRow.appendChild(th);
   });
+  const totalTh = document.createElement("th");
+  totalTh.className = "matrix-total-th";
+  totalTh.innerHTML = `<div>Итого</div><div class="matrix-dow">факт/план</div>`;
+  headRow.appendChild(totalTh);
   thead.appendChild(headRow);
   table.appendChild(thead);
 
@@ -1592,7 +1606,7 @@ function renderMatrixView(){
   if(names.length===0){
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = dates.length+1;
+    td.colSpan = dates.length+2;
     td.className = "hint";
     td.textContent = "В этом месяце пока нет активностей.";
     tr.appendChild(td);
@@ -1606,7 +1620,7 @@ function renderMatrixView(){
         const catTr = document.createElement("tr");
         catTr.className = "matrix-cat-row";
         const catTd = document.createElement("td");
-        catTd.colSpan = dates.length+1;
+        catTd.colSpan = dates.length+2;
         catTd.textContent = cat;
         catTr.appendChild(catTd);
         tbody.appendChild(catTr);
@@ -1635,8 +1649,52 @@ function renderMatrixView(){
         }
         tr.appendChild(td);
       });
+      let monthPlan = 0, monthFact = 0;
+      Object.values(data[name].byDate).forEach(c=>{ monthPlan += c.plan; monthFact += c.fact; });
+      const totalTd = document.createElement("td");
+      totalTd.className = "matrix-total-td";
+      totalTd.textContent = `${fmtH(monthFact)}/${fmtH(monthPlan)}`;
+      tr.appendChild(totalTd);
       tbody.appendChild(tr);
     });
+  }
+
+  // строка свободного времени: «план/реально», где план = 24 − запланированное, реально =
+  // 24 − отмеченное галочками. Реальное считаем только для сегодня и прошедших дней —
+  // будущие ещё не отмечены, у них «реально свободно» всегда вышло бы 24.
+  if(Object.keys(dayTotals).length>0){
+    const todayIso = isoDate(realToday);
+    const freeTr = document.createElement("tr");
+    freeTr.className = "matrix-free-row";
+    const freeNameTd = document.createElement("td");
+    freeNameTd.className = "matrix-name-td";
+    freeNameTd.textContent = "Свободно";
+    freeTr.appendChild(freeNameTd);
+    let sumPlanFree = 0, sumRealFree = 0, hasReal = false;
+    dates.forEach(date=>{
+      const iso = isoDate(date);
+      const isWeekend = date.getDay()===0 || date.getDay()===6;
+      const td = document.createElement("td");
+      td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"");
+      const t = dayTotals[iso];
+      if(t){
+        const planFree = Math.max(0, 24 - t.plan);
+        sumPlanFree += planFree;
+        if(iso <= todayIso){
+          const realFree = Math.max(0, 24 - t.fact);
+          sumRealFree += realFree; hasReal = true;
+          td.textContent = `${fmtH(planFree)}/${fmtH(realFree)}`;
+        } else {
+          td.textContent = fmtH(planFree);
+        }
+      }
+      freeTr.appendChild(td);
+    });
+    const freeTotalTd = document.createElement("td");
+    freeTotalTd.className = "matrix-total-td";
+    freeTotalTd.textContent = hasReal ? `${fmtH(sumPlanFree)}/${fmtH(sumRealFree)}` : fmtH(sumPlanFree);
+    freeTr.appendChild(freeTotalTd);
+    tbody.appendChild(freeTr);
   }
   table.appendChild(tbody);
 }
