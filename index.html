@@ -1568,9 +1568,10 @@ function renderMatrixView(){
   const names = Object.keys(data).filter(name=>
     Object.values(data[name].byDate).some(c=>c.plan>0.001)
   );
-  // порядок строк: по категории (в порядке справочника категорий, «Без категории» — в конце),
-  // внутри категории — по порядку в справочнике активностей
-  const catOrder = [...categories, NO_CATEGORY];
+  // порядок строк: по категории (в порядке справочника категорий, «Без категории» — после них,
+  // а «База» и «Работа» — в самом низу), внутри категории — по порядку в справочнике активностей
+  const MATRIX_BOTTOM_CATS = ["База","Работа"];
+  const catOrder = [...categories.filter(c=>!MATRIX_BOTTOM_CATS.includes(c)), NO_CATEGORY, ...MATRIX_BOTTOM_CATS];
   names.sort((n1,n2)=>{
     const c1 = catOrder.indexOf(data[n1].category), c2 = catOrder.indexOf(data[n2].category);
     const c1safe = c1<0 ? catOrder.length : c1, c2safe = c2<0 ? catOrder.length : c2;
