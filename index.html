@@ -173,7 +173,8 @@
     border:1px solid var(--border);border-radius:6px;background:#fbfbfa;margin-bottom:5px;
   }
   .tpl-act-row .tpl-act-name{flex:1;}
-  .tpl-act-row .tpl-act-time{color:var(--muted);font-variant-numeric:tabular-nums;}
+  .tpl-act-row .tpl-act-time{color:var(--muted);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:4px;}
+  .tpl-act-row .tpl-act-time input[type=time]{padding:2px 4px;font-size:12.5px;}
   .btn{
     background:var(--accent);color:#fff;border:none;border-radius:6px;
     padding:7px 14px;font-size:13px;cursor:pointer;
@@ -1655,10 +1656,10 @@ function renderMatrixView(){
   const names = Object.keys(data).filter(name=>
     Object.values(data[name].byDate).some(c=>c.plan>0.001)
   );
-  // порядок строк: по категории (в порядке справочника категорий, «Без категории» — после них,
-  // а «База» и «Работа» — в самом низу), внутри категории — по порядку в справочнике активностей
+  // порядок строк: «Без категории» — в самом верху, дальше категории в порядке справочника,
+  // а «База» и «Работа» — в самом низу; внутри категории — по порядку в справочнике активностей
   const MATRIX_BOTTOM_CATS = ["База","Работа"];
-  const catOrder = [...categories.filter(c=>!MATRIX_BOTTOM_CATS.includes(c)), NO_CATEGORY, ...MATRIX_BOTTOM_CATS];
+  const catOrder = [NO_CATEGORY, ...categories.filter(c=>!MATRIX_BOTTOM_CATS.includes(c)), ...MATRIX_BOTTOM_CATS];
   names.sort((n1,n2)=>{
     const c1 = catOrder.indexOf(data[n1].category), c2 = catOrder.indexOf(data[n2].category);
     const c1safe = c1<0 ? catOrder.length : c1, c2safe = c2<0 ? catOrder.length : c2;
@@ -2635,7 +2636,39 @@ function renderTemplatesTab(){
     [...acts].sort((a,b)=>sortKey(a)-sortKey(b)).forEach(a=>{
       const row = document.createElement("div");
       row.className = "tpl-act-row";
-      row.innerHTML = `<span class="tpl-act-name">${a.name}</span><span class="tpl-act-time">${a.start}–${a.end}</span>`;
+      const nameEl = document.createElement("span");
+      nameEl.className = "tpl-act-name"; nameEl.textContent = a.name;
+      row.appendChild(nameEl);
+      // время в шаблоне правится прямо в строке: новое начало сдвигает активность целиком
+      // (длительность сохраняется), новый конец меняет длительность — раньше начала нельзя
+      const mkTime = (field)=>{
+        const inp = document.createElement("input");
+        inp.type = "time"; inp.value = a[field];
+        inp.onchange = ()=>{
+          if(!inp.value){ inp.value = a[field]; return; }
+          if(field==="start"){
+            const durMin = Math.round(duration(a)*60);
+            a.start = inp.value;
+            a.end = toHM(toMin(a.start) + durMin);
+          } else {
+            if(!isValidTimeRange(a.start, inp.value)){
+              showTopToast("Конец активности не может быть раньше начала.");
+              inp.value = a.end;
+              return;
+            }
+            a.end = inp.value;
+          }
+          dirtyTemplateIds.add(currentTemplateId);
+          renderAll();
+        };
+        return inp;
+      };
+      const timeWrap = document.createElement("span");
+      timeWrap.className = "tpl-act-time";
+      timeWrap.appendChild(mkTime("start"));
+      timeWrap.appendChild(document.createTextNode("–"));
+      timeWrap.appendChild(mkTime("end"));
+      row.appendChild(timeWrap);
       const del = document.createElement("button");
       del.className="del-btn"; del.textContent="✕"; del.title="Удалить из шаблона";
       del.onclick = ()=>{
