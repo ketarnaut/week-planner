@@ -217,8 +217,11 @@
     transition:all .15s;
   }
   .scope-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
-  #matrixTable{border-collapse:collapse;font-size:11.5px;}
-  #matrixTable th, #matrixTable td{border:1px solid var(--border);padding:3px 5px;text-align:center;white-space:nowrap;}
+  #matrixTable, .matrix-table{border-collapse:collapse;font-size:11.5px;}
+  #matrixTable th, #matrixTable td, .matrix-table th, .matrix-table td{border:1px solid var(--border);padding:3px 5px;text-align:center;white-space:nowrap;}
+  .matrix-table{min-width:0;width:auto;}
+  .tpl-matrix-wrap{margin-bottom:16px;padding-bottom:14px;border-bottom:1px dashed var(--border);}
+  .matrix-table td.matrix-cell.over{background:var(--danger-soft)!important;color:var(--danger);font-weight:600;}
   .matrix-corner{position:sticky;left:0;background:var(--card);text-align:left!important;z-index:2;min-width:120px;}
   .matrix-name-td{position:sticky;left:0;background:var(--card);text-align:left!important;color:var(--text);min-width:120px;max-width:160px;overflow:hidden;text-overflow:ellipsis;}
   .matrix-date-th{font-weight:500;color:var(--muted);min-width:26px;}
@@ -1621,6 +1624,17 @@ function setMainViewMode(mode){
 // компактный формат часов: 1.5 → "1.5", 2.00 → "2" (без незначащих нулей)
 function fmtH(h){ return String(Math.round(h*100)/100); }
 
+// порядок строк матриц (месяца и шаблона): «Без категории» — в самом верху, дальше категории в
+// порядке справочника, а «База» и «Работа» — в самом низу; внутри категории — по справочнику активностей
+const MATRIX_BOTTOM_CATS = ["База","Работа"];
+function matrixNameCompare(n1, n2){
+  const catOrder = [NO_CATEGORY, ...categories.filter(c=>!MATRIX_BOTTOM_CATS.includes(c)), ...MATRIX_BOTTOM_CATS];
+  const c1 = catOrder.indexOf(categoryOf(n1)), c2 = catOrder.indexOf(categoryOf(n2));
+  const c1safe = c1<0 ? catOrder.length : c1, c2safe = c2<0 ? catOrder.length : c2;
+  if(c1safe!==c2safe) return c1safe - c2safe;
+  return catalog.indexOf(n1) - catalog.indexOf(n2);
+}
+
 function renderMatrixView(){
   document.getElementById("matrixMonthLabel").textContent =
     MONTHS_FULL[calendarViewMonth.getMonth()] + " " + calendarViewMonth.getFullYear();
@@ -1661,16 +1675,7 @@ function renderMatrixView(){
   const names = Object.keys(data).filter(name=>
     Object.values(data[name].byDate).some(c=>c.plan>0.001)
   );
-  // порядок строк: «Без категории» — в самом верху, дальше категории в порядке справочника,
-  // а «База» и «Работа» — в самом низу; внутри категории — по порядку в справочнике активностей
-  const MATRIX_BOTTOM_CATS = ["База","Работа"];
-  const catOrder = [NO_CATEGORY, ...categories.filter(c=>!MATRIX_BOTTOM_CATS.includes(c)), ...MATRIX_BOTTOM_CATS];
-  names.sort((n1,n2)=>{
-    const c1 = catOrder.indexOf(data[n1].category), c2 = catOrder.indexOf(data[n2].category);
-    const c1safe = c1<0 ? catOrder.length : c1, c2safe = c2<0 ? catOrder.length : c2;
-    if(c1safe!==c2safe) return c1safe - c2safe;
-    return catalog.indexOf(n1) - catalog.indexOf(n2);
-  });
+  names.sort(matrixNameCompare);
 
   const table = document.getElementById("matrixTable");
   table.innerHTML = "";
@@ -2630,6 +2635,7 @@ function renderTemplatesTab(){
     contents.innerHTML = `<div class="hint" style="margin:0;">В шаблоне пока нет активностей — добавь их выше.</div>`;
     return;
   }
+  contents.appendChild(buildTemplateMatrix(tpl));
   DAYS.forEach(d=>{
     const acts = tpl.days[d].acts||[];
     if(acts.length===0) return;
@@ -2702,6 +2708,104 @@ function renderTemplatesTab(){
     });
     contents.appendChild(group);
   });
+}
+
+// матрица недели шаблона — как «Матрица месяца», только столбцы Пн–Вс: часы активности по дням,
+// «Итого» за неделю и розовая строка «Свободно» (24 ч − активности дня; перебор — красным)
+function buildTemplateMatrix(tpl){
+  const wrap = document.createElement("div");
+  wrap.className = "tpl-matrix-wrap";
+  const byName = {};
+  DAYS.forEach(d=>{
+    (tpl.days[d].acts||[]).forEach(a=>{
+      if(!byName[a.name]) byName[a.name] = {};
+      byName[a.name][d] = (byName[a.name][d]||0) + duration(a);
+    });
+  });
+  const names = Object.keys(byName).sort(matrixNameCompare);
+
+  const scroll = document.createElement("div");
+  scroll.className = "table-scroll";
+  const table = document.createElement("table");
+  table.className = "matrix-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.className = "matrix-corner"; corner.textContent = "Активность";
+  headRow.appendChild(corner);
+  DAYS.forEach((d,i)=>{
+    const th = document.createElement("th");
+    th.className = "matrix-date-th" + (i>=5 ? " weekend" : "");
+    th.textContent = WEEKDAY_SHORT[i];
+    headRow.appendChild(th);
+  });
+  const totalTh = document.createElement("th");
+  totalTh.className = "matrix-total-th"; totalTh.textContent = "Итого";
+  headRow.appendChild(totalTh);
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  let lastCat = null;
+  names.forEach(name=>{
+    const cat = categoryOf(name);
+    if(cat!==lastCat){
+      lastCat = cat;
+      const catTr = document.createElement("tr");
+      catTr.className = "matrix-cat-row";
+      const catTd = document.createElement("td");
+      catTd.colSpan = DAYS.length + 2; catTd.textContent = cat;
+      catTr.appendChild(catTd);
+      tbody.appendChild(catTr);
+    }
+    const tr = document.createElement("tr");
+    const nameTd = document.createElement("td");
+    nameTd.className = "matrix-name-td"; nameTd.textContent = name; nameTd.title = name;
+    tr.appendChild(nameTd);
+    let sum = 0;
+    DAYS.forEach((d,i)=>{
+      const td = document.createElement("td");
+      td.className = "matrix-cell" + (i>=5 ? " weekend" : "");
+      const h = byName[name][d] || 0;
+      sum += h;
+      td.textContent = h>0 ? fmtH(h) : "";
+      tr.appendChild(td);
+    });
+    const totalTd = document.createElement("td");
+    totalTd.className = "matrix-total-td"; totalTd.textContent = fmtH(sum);
+    tr.appendChild(totalTd);
+    tbody.appendChild(tr);
+  });
+
+  const freeTr = document.createElement("tr");
+  freeTr.className = "matrix-free-row";
+  const freeName = document.createElement("td");
+  freeName.className = "matrix-name-td"; freeName.textContent = "Свободно";
+  freeTr.appendChild(freeName);
+  let freeSum = 0;
+  DAYS.forEach((d,i)=>{
+    const td = document.createElement("td");
+    td.className = "matrix-cell" + (i>=5 ? " weekend" : "");
+    const planned = actsHoursOf(tpl.days[d]);
+    if(planned > 24 + 0.01){
+      td.classList.add("over");
+      td.textContent = "−" + fmtH(planned - 24);
+      td.title = `Перебор: ${fmtH(planned)} ч из 24`;
+    } else {
+      td.textContent = fmtH(24 - planned);
+      freeSum += 24 - planned;
+    }
+    freeTr.appendChild(td);
+  });
+  const freeTotal = document.createElement("td");
+  freeTotal.className = "matrix-total-td"; freeTotal.textContent = fmtH(freeSum);
+  freeTr.appendChild(freeTotal);
+  tbody.appendChild(freeTr);
+
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  wrap.appendChild(scroll);
+  return wrap;
 }
 
 function renderTplDayChecks(){
