@@ -29,8 +29,9 @@
   .sub{color:var(--muted);font-size:13px;margin-bottom:0;}
   .header-text{flex:1;min-width:220px;margin-bottom:14px;}
   .layout{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;}
-  .left{flex:2;min-width:360px;display:flex;flex-direction:column;}
-  .right{flex:1;min-width:260px;display:flex;flex-direction:column;}
+  .left{flex:1;min-width:360px;display:flex;flex-direction:column;}
+  /* правая колонка на «Главной» — по ширине мини-календаря, всё остальное место отдаём левой */
+  .right{flex:0 0 220px;width:220px;min-width:0;display:flex;flex-direction:column;}
   .cal-card{padding-bottom:14px;}
   .cal-card-mini{width:220px;flex-shrink:0;padding:10px;margin-bottom:0;}
   .cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11.5px;font-weight:600;}
@@ -203,6 +204,14 @@
   .cat-sub-row .cat-sub-name{width:104px;flex-shrink:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .cat-sub-row .cat-bar-wrap{height:9px;}
   .cat-sub-row .cat-hrs{width:150px;font-size:10.5px;}
+  /* в узкой правой колонке строка итогов — в три яруса: название, полоска, часы */
+  .right .cat-row, .right .cat-sub-row{flex-wrap:wrap;gap:3px 6px;}
+  .right .cat-name, .right .cat-sub-row .cat-sub-name{width:auto;flex:1 1 100%;}
+  .right .cat-bar-wrap{flex:1 1 100%;}
+  .right .cat-hrs, .right .cat-sub-row .cat-hrs{width:auto;flex:1 1 100%;text-align:left;}
+  .right .cat-row{margin-bottom:12px;}
+  .right .legend{gap:10px;flex-wrap:wrap;}
+  .right .scope-toggle{flex-wrap:wrap;}
   .legend{display:flex;gap:16px;font-size:11.5px;color:var(--muted);margin-bottom:10px;}
   .legend span{display:inline-flex;align-items:center;gap:5px;}
   .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;}
