@@ -233,6 +233,9 @@
     position:static;font-size:11px;letter-spacing:.2px;padding:4px 6px;
   }
   td.matrix-cell.done{background:var(--accent)!important;color:#fff;font-weight:700;}
+  .matrix-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text);margin:0 0 8px;cursor:pointer;}
+  .matrix-toggle input{width:15px;height:15px;}
+  .matrix-date-th.other-month, td.matrix-cell.other-month{opacity:.5;background:#f6f5f2;}
   .matrix-fact{color:var(--muted);font-weight:400;}
   .matrix-total-th{font-weight:600;color:var(--text);min-width:64px;border-left:2px solid var(--accent)!important;}
   .matrix-total-td{font-weight:600;color:var(--text);background:#f1efe9;border-left:2px solid var(--accent)!important;}
@@ -426,7 +429,8 @@
             <span id="matrixMonthLabel"></span>
             <button class="cal-nav" id="matrixNextMonth" type="button">›</button>
           </div>
-          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё). «Итого» справа — сделано/запланировано за месяц. Розовая строка «Свободно» — свободные часы по плану/реально (реально — по галочкам, только по сегодняшний день).</div>
+          <label class="matrix-toggle"><input type="checkbox" id="matrixFullWeeks" checked> Показать полные недели</label>
+          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё). «Итого» справа — сделано/запланировано за месяц (бледные дни соседних месяцев в «Итого» не входят). Розовая строка «Свободно» — свободные часы по плану/реально (реально — по галочкам, только по сегодняшний день).</div>
           <div class="table-scroll">
             <table id="matrixTable"></table>
           </div>
@@ -919,7 +923,10 @@ function completeActivityMove(actId, sourceLoc, targetWeekKey, targetDayName, ta
   weeks[targetWeekKey][targetDayName].acts.push(act);
   markDayDirtyFor(sourceLoc.weekKey, sourceLoc.day);
   markDayDirtyFor(targetWeekKey, targetDayName);
-  activateWeek(targetDate, targetWeekKey); // переключает вид на целевой день и вызывает renderAll()
+  // остаёмся на том дне, который открыт сейчас (экран не прыгает), попап переноса закрываем
+  moveCalendarForActId = null;
+  renderAll();
+  showTopToast(`«${act.name}» перенесено на ${pad2(targetDate.getDate())}.${pad2(targetDate.getMonth()+1)}.`);
 }
 
 // клик по дню в мини-календаре переноса. Если для целевой недели ещё нет плана (или он пуст) —
@@ -931,7 +938,8 @@ function moveActivityToDate(actId, targetDate){
   const targetWeekKey = isoDate(mondayOf(targetDate));
   const targetDayName = DAYS[(targetDate.getDay()+6)%7];
   if(loc.weekKey===targetWeekKey && loc.day===targetDayName){
-    activateWeek(targetDate, targetWeekKey); // тот же день — просто показать его
+    moveCalendarForActId = null; // тот же день — переносить некуда, просто закрываем попап
+    renderAll();
     return;
   }
   const weekReady = weeks[targetWeekKey] && !isWeekEmpty(weeks[targetWeekKey]);
@@ -1112,6 +1120,7 @@ function renderDay(){
   const overlapIds = overlappingIds(acts);
   const body = document.getElementById("dayBody");
   body.innerHTML = "";
+  const pendingAutosize = [];
   // дата текущего открытого дня — одна и та же для всех строк, нужна для кнопки «перенести»
   const currentRowDate = addDays(parseISODate(currentWeekKey), DAYS.indexOf(currentDay));
   const rowDateLabel = pad2(currentRowDate.getDate()) + "." + pad2(currentRowDate.getMonth()+1);
@@ -1218,7 +1227,9 @@ function renderDay(){
     tr.appendChild(delTd);
 
     body.appendChild(tr);
-    autosize(commentInp);
+    // высоту комментариев подгоняем после того, как все строки уже в таблице — иначе каждый
+    // autosize заставляет браузер пересчитывать раскладку на ещё недостроенной (короткой) таблице
+    pendingAutosize.push(commentInp);
 
     // мини-календарь переноса — показываем сразу под строкой активности, если он открыт для неё
     if(moveCalendarForActId === a.id){
@@ -1280,7 +1291,7 @@ function renderDay(){
       subTd.appendChild(subWrap);
       subTr.appendChild(subTd);
       body.appendChild(subTr);
-      subCommentEls.forEach(autosize);
+      pendingAutosize.push(...subCommentEls);
     }
 
     // тонкая розовая полоска — разрыв (свободное время) до следующего занятого слота.
@@ -1303,6 +1314,7 @@ function renderDay(){
       body.appendChild(gapTr);
     }
   });
+  pendingAutosize.forEach(autosize);
 
   // Внизу оставляем только Отдых — считается автоматически (остаток суток)
   const belowWrap = document.getElementById("belowRows");
@@ -1611,6 +1623,10 @@ function renderCalendar(){
 // calendarViewMonth — того же состояния, что и у календаря справа, чтобы навигация
 // по месяцу была единой.
 let mainViewMode = "day"; // "day" | "matrix"
+// «Показать полные недели»: добавлять в матрицу дни соседних месяцев, чтобы первая и последняя
+// недели были целиком (с понедельника по воскресенье). «Итого» и суммы считаются только по дням
+// выбранного месяца — соседние дни показаны для контекста.
+let matrixFullWeeks = true;
 
 function setMainViewMode(mode){
   mainViewMode = mode;
@@ -1643,7 +1659,12 @@ function renderMatrixView(){
   const month = calendarViewMonth.getMonth();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const dates = [];
-  for(let d=1; d<=daysInMonth; d++) dates.push(new Date(year, month, d));
+  const rangeStart = matrixFullWeeks ? mondayOf(new Date(year, month, 1)) : new Date(year, month, 1);
+  const rangeEnd = matrixFullWeeks ? addDays(mondayOf(new Date(year, month, daysInMonth)), 6) : new Date(year, month, daysInMonth);
+  for(let d=new Date(rangeStart); d<=rangeEnd; d=addDays(d,1)) dates.push(new Date(d));
+  const inMonth = (date)=> date.getMonth()===month && date.getFullYear()===year;
+  const monthPrefix = year + "-" + pad2(month+1) + "-";
+  const otherCls = (date)=> inMonth(date) ? "" : " other-month";
 
   // { activityName: { category, byDate: { "ISO-дата": {plan, fact} } } }
   const data = {};
@@ -1690,13 +1711,13 @@ function renderMatrixView(){
   dates.forEach(date=>{
     const th = document.createElement("th");
     const isWeekend = date.getDay()===0 || date.getDay()===6;
-    th.className = "matrix-date-th" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"");
+    th.className = "matrix-date-th" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"") + otherCls(date);
     th.innerHTML = `<div>${date.getDate()}</div><div class="matrix-dow">${WEEKDAY_SHORT[(date.getDay()+6)%7]}</div>`;
     headRow.appendChild(th);
   });
   const totalTh = document.createElement("th");
   totalTh.className = "matrix-total-th";
-  totalTh.innerHTML = `<div>Итого</div><div class="matrix-dow">факт/план</div>`;
+  totalTh.innerHTML = `<div>Итого</div><div class="matrix-dow">за месяц, факт/план</div>`;
   headRow.appendChild(totalTh);
   thead.appendChild(headRow);
   table.appendChild(thead);
@@ -1734,7 +1755,7 @@ function renderMatrixView(){
         const cell = data[name].byDate[iso];
         const isWeekend = date.getDay()===0 || date.getDay()===6;
         const td = document.createElement("td");
-        td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"");
+        td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"") + otherCls(date);
         if(cell && cell.plan>0){
           const planStr = fmtH(cell.plan);
           if(cell.fact>0 && Math.abs(cell.fact-cell.plan)>0.001){
@@ -1749,7 +1770,10 @@ function renderMatrixView(){
         tr.appendChild(td);
       });
       let monthPlan = 0, monthFact = 0;
-      Object.values(data[name].byDate).forEach(c=>{ monthPlan += c.plan; monthFact += c.fact; });
+      Object.entries(data[name].byDate).forEach(([iso, c])=>{
+        if(!iso.startsWith(monthPrefix)) return;
+        monthPlan += c.plan; monthFact += c.fact;
+      });
       const totalTd = document.createElement("td");
       totalTd.className = "matrix-total-td";
       totalTd.textContent = `${fmtH(monthFact)}/${fmtH(monthPlan)}`;
@@ -1774,14 +1798,15 @@ function renderMatrixView(){
       const iso = isoDate(date);
       const isWeekend = date.getDay()===0 || date.getDay()===6;
       const td = document.createElement("td");
-      td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"");
+      td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"") + otherCls(date);
       const t = dayTotals[iso];
       if(t){
+        const counts = inMonth(date); // в «Итого» — только дни выбранного месяца
         const planFree = Math.max(0, 24 - t.plan);
-        sumPlanFree += planFree;
+        if(counts) sumPlanFree += planFree;
         if(iso <= todayIso){
           const realFree = Math.max(0, 24 - t.fact);
-          sumRealFree += realFree; hasReal = true;
+          if(counts){ sumRealFree += realFree; hasReal = true; }
           td.textContent = `${fmtH(planFree)}/${fmtH(realFree)}`;
         } else {
           td.textContent = fmtH(planFree);
@@ -1799,6 +1824,10 @@ function renderMatrixView(){
 }
 
 function renderAll(){
+  // таблицы перестраиваются целиком (innerHTML = ""), и пока строки добавляются заново, страница
+  // на мгновение становится короче — браузер при этом сбрасывает прокрутку вверх. Запоминаем
+  // позицию и возвращаем её после перерисовки, чтобы галочка/перенос не уводили экран наверх.
+  const scrollY = window.scrollY;
   renderDay();
   renderScopeToggle();
   renderUntimedTotals();
@@ -1809,6 +1838,7 @@ function renderAll(){
   renderTabPanels();
   if(mainViewMode==="matrix") renderMatrixView();
   renderMainStudyWarn();
+  if(window.scrollY !== scrollY) window.scrollTo(0, scrollY);
   scheduleSave();
 }
 
@@ -2916,6 +2946,10 @@ document.getElementById("matrixPrevMonth").addEventListener("click", ()=>{
 document.getElementById("matrixNextMonth").addEventListener("click", ()=>{
   calendarViewMonth = new Date(calendarViewMonth.getFullYear(), calendarViewMonth.getMonth()+1, 1);
   renderCalendar();
+  renderMatrixView();
+});
+document.getElementById("matrixFullWeeks").addEventListener("change", (e)=>{
+  matrixFullWeeks = e.target.checked;
   renderMatrixView();
 });
 document.getElementById("mainViewDayBtn").addEventListener("click", ()=> setMainViewMode("day"));
