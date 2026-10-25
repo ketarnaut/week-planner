@@ -433,7 +433,7 @@
             <button class="cal-nav" id="matrixNextMonth" type="button">›</button>
           </div>
           <label class="matrix-toggle"><input type="checkbox" id="matrixFullWeeks" checked> Показать полные недели</label>
-          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё). «Итого» справа — сделано/запланировано за месяц (бледные дни соседних месяцев в «Итого» не входят). Розовая строка «Свободно» — свободные часы по плану/реально (реально — по галочкам, только по сегодняшний день).</div>
+          <div class="hint" style="margin-top:0;margin-bottom:10px;">Строки — активности (сгруппированы по категориям), столбцы — дни месяца. В ячейке: запланировано, через «/» — сколько из этого сделано (если не всё). «Итого» справа — сделано/запланировано за показанные дни (с «Показать полные недели» — вместе с бледными днями соседних месяцев). Розовая строка «Свободно» — свободные часы по плану/реально (реально — по галочкам, только по сегодняшний день).</div>
           <div class="table-scroll">
             <table id="matrixTable"></table>
           </div>
@@ -1627,8 +1627,8 @@ function renderCalendar(){
 // по месяцу была единой.
 let mainViewMode = "day"; // "day" | "matrix"
 // «Показать полные недели»: добавлять в матрицу дни соседних месяцев, чтобы первая и последняя
-// недели были целиком (с понедельника по воскресенье). «Итого» и суммы считаются только по дням
-// выбранного месяца — соседние дни показаны для контекста.
+// недели были целиком (с понедельника по воскресенье). «Итого» считается по всем показанным дням —
+// при включённом переключателе в него входят и дни соседних месяцев.
 let matrixFullWeeks = true;
 
 function setMainViewMode(mode){
@@ -1666,7 +1666,6 @@ function renderMatrixView(){
   const rangeEnd = matrixFullWeeks ? addDays(mondayOf(new Date(year, month, daysInMonth)), 6) : new Date(year, month, daysInMonth);
   for(let d=new Date(rangeStart); d<=rangeEnd; d=addDays(d,1)) dates.push(new Date(d));
   const inMonth = (date)=> date.getMonth()===month && date.getFullYear()===year;
-  const monthPrefix = year + "-" + pad2(month+1) + "-";
   const otherCls = (date)=> inMonth(date) ? "" : " other-month";
 
   // { activityName: { category, byDate: { "ISO-дата": {plan, fact} } } }
@@ -1731,7 +1730,7 @@ function renderMatrixView(){
   });
   const totalTh = document.createElement("th");
   totalTh.className = "matrix-total-th";
-  totalTh.innerHTML = `<div>Итого</div><div class="matrix-dow">за месяц, факт/план</div>`;
+  totalTh.innerHTML = `<div>Итого</div><div class="matrix-dow">${matrixFullWeeks ? "за полные недели" : "за месяц"}, факт/план</div>`;
   headRow.appendChild(totalTh);
   thead.appendChild(headRow);
   table.appendChild(thead);
@@ -1805,10 +1804,7 @@ function renderMatrixView(){
         tr.appendChild(td);
       });
       let monthPlan = 0, monthFact = 0;
-      Object.entries(data[name].byDate).forEach(([iso, c])=>{
-        if(!iso.startsWith(monthPrefix)) return;
-        monthPlan += c.plan; monthFact += c.fact;
-      });
+      Object.values(data[name].byDate).forEach(c=>{ monthPlan += c.plan; monthFact += c.fact; });
       const totalTd = document.createElement("td");
       totalTd.className = "matrix-total-td";
       totalTd.textContent = `${fmtH(monthFact)}/${fmtH(monthPlan)}`;
@@ -1836,12 +1832,11 @@ function renderMatrixView(){
       td.className = "matrix-cell" + (isWeekend?" weekend":"") + (sameDate(date, realToday)?" today-col":"") + otherCls(date);
       const t = dayTotals[iso];
       if(t){
-        const counts = inMonth(date); // в «Итого» — только дни выбранного месяца
         const planFree = Math.max(0, 24 - t.plan);
-        if(counts) sumPlanFree += planFree;
+        sumPlanFree += planFree;
         if(iso <= todayIso){
           const realFree = Math.max(0, 24 - t.fact);
-          if(counts){ sumRealFree += realFree; hasReal = true; }
+          sumRealFree += realFree; hasReal = true;
           td.textContent = `${fmtH(planFree)}/${fmtH(realFree)}`;
         } else {
           td.textContent = fmtH(planFree);
