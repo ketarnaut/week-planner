@@ -114,7 +114,12 @@
   .study-warn .btn{margin-top:8px;font-size:12px;padding:5px 10px;}
   .lessons-table{min-width:900px;}
   .lessons-table td.lesson-topic{min-width:260px;}
-  .lessons-table .lesson-num{font-weight:600;color:var(--muted);}
+  .lesson-drag{cursor:grab;color:#b7b4ad;margin-right:5px;user-select:none;letter-spacing:-2px;}
+  .lesson-drag:active{cursor:grabbing;}
+  .lessons-table tr.dragging td{opacity:.4;}
+  .lessons-table tr.drop-before td{box-shadow:inset 0 2px 0 var(--accent);}
+  .lessons-table tr.drop-after td{box-shadow:inset 0 -2px 0 var(--accent);}
+  .lessons-table .lesson-num{white-space:nowrap;font-weight:600;color:var(--muted);}
   .lessons-table .lesson-time{font-size:12.5px;white-space:nowrap;}
   .lessons-table .lesson-time.missing{color:#a8650f;}
   .lessons-table .lesson-time.diff{color:#a8650f;}
@@ -484,7 +489,7 @@
           <input type="text" id="lessonAddTopic" class="name-input" placeholder="Тема урока">
           <button class="btn" id="lessonAddBtn" type="button">Добавить урок</button>
         </div>
-        <div class="hint">Дата, продолжительность и тема обязательны. Номер ставится сам — следующий по счёту.</div>
+        <div class="hint">Дата, продолжительность и тема обязательны. Номер — порядковый, пересчитывается сам. Порядок уроков меняется перетаскиванием за ⋮⋮ (на урок другого дня — урок переедет на его дату). Если в день несколько уроков, первый встаёт на самое раннее занятие в плане, второй — на следующее.</div>
       </div>
 
       <div class="card" id="lessonsImportCard" style="display:none;">
@@ -1651,6 +1656,9 @@ function setMainViewMode(mode){
 
 // компактный формат часов: 1.5 → "1.5", 2.00 → "2" (без незначащих нулей)
 function fmtH(h){ return String(Math.round(h*100)/100); }
+// для «Итого» матрицы месяца: 1 знак после запятой, всегда вверх (8.67 → 8.7, 72.11 → 72.2).
+// toFixed(6) убирает хвосты плавающей точки, чтобы ровные 4.5 не превращались в 4.6
+function fmtHUp(h){ return String(Math.ceil(+(h*10).toFixed(6))/10); }
 
 // порядок строк матриц (месяца и шаблона): «Без категории» — в самом верху, дальше категории в
 // порядке справочника, а «База» и «Работа» — в самом низу; внутри категории — по справочнику активностей
@@ -1816,7 +1824,7 @@ function renderMatrixView(){
       Object.values(data[name].byDate).forEach(c=>{ monthPlan += c.plan; monthFact += c.fact; });
       const totalTd = document.createElement("td");
       totalTd.className = "matrix-total-td";
-      totalTd.textContent = `${fmtH(monthFact)}/${fmtH(monthPlan)}`;
+      totalTd.textContent = `${fmtHUp(monthFact)}/${fmtHUp(monthPlan)}`;
       tr.appendChild(totalTd);
       tbody.appendChild(tr);
     });
@@ -1855,7 +1863,7 @@ function renderMatrixView(){
     });
     const freeTotalTd = document.createElement("td");
     freeTotalTd.className = "matrix-total-td";
-    freeTotalTd.textContent = hasReal ? `${fmtH(sumPlanFree)}/${fmtH(sumRealFree)}` : fmtH(sumPlanFree);
+    freeTotalTd.textContent = hasReal ? `${fmtHUp(sumPlanFree)}/${fmtHUp(sumRealFree)}` : fmtHUp(sumPlanFree);
     freeTr.appendChild(freeTotalTd);
     tbody.appendChild(freeTr);
   }
@@ -1970,8 +1978,26 @@ function renderTabPanels(){
 function fmtDM(iso){ const d = parseISODate(iso); return pad2(d.getDate())+"."+pad2(d.getMonth()+1); }
 function fmtWdDM(iso){ const d = parseISODate(iso); return WEEKDAY_SHORT[(d.getDay()+6)%7].toLowerCase()+" "+fmtDM(iso); }
 
+// порядок уроков: по дате, внутри дня — по seq (порядок, заданный перетаскиванием); у старых
+// записей без seq — по номеру
 function sortedLessons(course){
-  return (course.lessons||[]).slice().sort((a,b)=> a.date===b.date ? a.num-b.num : (a.date<b.date?-1:1));
+  return (course.lessons||[]).slice().sort((a,b)=>{
+    if(a.date!==b.date) return a.date<b.date ? -1 : 1;
+    const sa = a.seq ?? a.num ?? 0, sb = b.seq ?? b.num ?? 0;
+    if(sa!==sb) return sa - sb;
+    return (a.num||0) - (b.num||0);
+  });
+}
+// номер урока — всегда порядковый (1, 2, 3… по порядку дат), seq — порядок внутри дня с нуля.
+// Вызывается после любого изменения дат/порядка/состава уроков.
+const LESSON_SEQ_LAST = 9999; // новый урок или урок, переехавший на другую дату, — в конец дня
+function normalizeLessons(course){
+  let prevDate = null, k = 0;
+  sortedLessons(course).forEach((l, i)=>{
+    if(l.date!==prevDate){ prevDate = l.date; k = 0; }
+    l.seq = k++;
+    l.num = i + 1;
+  });
 }
 
 // активности курса в плане недели на дату урока
@@ -1982,24 +2008,41 @@ function planActsFor(dateISO, name){
   const day = weeks[wk] && weeks[wk][dn];
   return {weekExists: !!weeks[wk], wk, dn, acts: day ? (day.acts||[]).filter(a=>a.name===name) : []};
 }
-function lessonIsDone(course, lesson){
-  return !!lesson.done || planActsFor(lesson.date, course.name).acts.some(a=>a.done);
+// слот урока в плане: если в день несколько уроков и несколько занятий, они сопоставляются по
+// порядку — первый урок дня встаёт на самое раннее занятие, второй — на следующее и т.д.
+function lessonSlot(course, lesson){
+  const plan = planActsFor(lesson.date, course.name);
+  const acts = plan.acts.slice().sort((a,b)=>sortKey(a)-sortKey(b));
+  const i = sortedLessons(course).filter(l=>l.date===lesson.date).findIndex(l=>l.id===lesson.id);
+  return {act: acts[i] || null, weekExists: plan.weekExists, actsCount: acts.length, plan};
 }
+function lessonIsDone(course, lesson){
+  if(lesson.done) return true;
+  const slot = lessonSlot(course, lesson);
+  return !!(slot.act && slot.act.done);
+}
+function zanyatiyWord(n){ const m10=n%10, m100=n%100; return (m10===1&&m100!==11) ? "занятие" : (m10>=2&&m10<=4&&(m100<12||m100>14)) ? "занятия" : "занятий"; }
 
-// расхождения расписания курса с планом одной (уже заведённой) недели: урок есть, а активности
-// в этот день нет — и наоборот
+// расхождения расписания курса с планом одной (уже заведённой) недели — по каждому дню
+// сравниваем число уроков и число занятий курса в плане
 function courseWeekIssues(course, weekKey){
   const issues = [];
   if(!weeks[weekKey]) return issues;
   const monday = parseISODate(weekKey);
+  const all = sortedLessons(course);
   DAYS.forEach((dn, i)=>{
     const iso = isoDate(addDays(monday, i));
-    const dayLessons = (course.lessons||[]).filter(l=>l.date===iso);
-    const hasAct = ((weeks[weekKey][dn] && weeks[weekKey][dn].acts) || []).some(a=>a.name===course.name);
-    if(dayLessons.length && !hasAct){
+    const dayLessons = all.filter(l=>l.date===iso);
+    const k = ((weeks[weekKey][dn] && weeks[weekKey][dn].acts) || []).filter(a=>a.name===course.name).length;
+    const n = dayLessons.length;
+    if(n && !k){
       dayLessons.forEach(l=> issues.push(`урок №${l.num} (${fmtWdDM(iso)}) — в плане нет «${course.name}»`));
-    } else if(!dayLessons.length && hasAct){
+    } else if(!n && k){
       issues.push(`${fmtWdDM(iso)} — в плане есть «${course.name}», а урока в расписании нет`);
+    } else if(n > k){
+      dayLessons.slice(k).forEach(l=> issues.push(`урок №${l.num} (${fmtWdDM(iso)}) — в плане на этот день только ${k} ${zanyatiyWord(k)} «${course.name}», слота не хватает`));
+    } else if(k > n){
+      issues.push(`${fmtWdDM(iso)} — в плане ${k} ${zanyatiyWord(k)} «${course.name}», а уроков ${n}`);
     }
   });
   return issues;
@@ -2061,9 +2104,11 @@ function studyFixProposal(courseId, weekKey){
   const inW = all.filter(l=>l.date>=wkStart && l.date<=wkEnd);
   const N = inW.length;
   if(!N) return null;
+  // по одному «слоту» на каждое занятие курса в плане (в один день их может быть несколько)
   const actDates = [];
   DAYS.forEach((dn, i)=>{
-    if(((weeks[weekKey][dn] && weeks[weekKey][dn].acts) || []).some(a=>a.name===course.name)) actDates.push(isoDate(addDays(monday, i)));
+    const k = ((weeks[weekKey][dn] && weeks[weekKey][dn].acts) || []).filter(a=>a.name===course.name).length;
+    for(let j=0; j<k; j++) actDates.push(isoDate(addDays(monday, i)));
   });
   const M = actDates.length;
   if(M===N){
@@ -2124,7 +2169,8 @@ function notifyStudyIssuesForWeek(weekKey){
 }
 document.getElementById("studyFixApplyBtn").addEventListener("click", ()=>{
   if(!currentStudyFix) return;
-  currentStudyFix.moves.forEach(m=>{ m.lesson.date = m.to; });
+  currentStudyFix.moves.forEach((m, i)=>{ m.lesson.date = m.to; m.lesson.seq = i; });
+  normalizeLessons(currentStudyFix.course);
   const id = Object.keys(courses).find(k=>courses[k]===currentStudyFix.course);
   if(id) markCourseDirty(id);
   showNextStudyFix();
@@ -2199,21 +2245,51 @@ function renderStudyTab(){
     td.colSpan = 8; td.className = "hint"; td.textContent = "Уроков пока нет — добавь их ниже или вставь из чата.";
     tr.appendChild(td); tbody.appendChild(tr);
   }
-  lessons.forEach(lesson=>{
+  lessons.forEach((lesson, idx)=>{
     const tr = document.createElement("tr");
     if(lessonIsDone(course, lesson)) tr.className = "lesson-done";
     const save = ()=>{ markCourseDirty(currentCourseId); scheduleSave(); };
 
     const numTd = document.createElement("td");
-    numTd.className = "lesson-num"; numTd.textContent = lesson.num;
+    numTd.className = "lesson-num";
+    const handle = document.createElement("span");
+    handle.className = "lesson-drag"; handle.textContent = "⋮⋮"; handle.draggable = true;
+    handle.title = "Перетащи, чтобы поменять порядок (или дату) урока";
+    handle.addEventListener("dragstart", (e)=>{
+      draggedLessonId = lesson.id;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", lesson.id);
+      e.dataTransfer.setDragImage(tr, 10, 10);
+      setTimeout(()=> tr.classList.add("dragging"), 0);
+    });
+    handle.addEventListener("dragend", ()=>{ draggedLessonId = null; tr.classList.remove("dragging"); clearLessonDropMarks(); });
+    numTd.appendChild(handle);
+    numTd.appendChild(document.createTextNode(String(idx + 1)));
     tr.appendChild(numTd);
+
+    tr.addEventListener("dragover", (e)=>{
+      if(!draggedLessonId || draggedLessonId===lesson.id) return;
+      e.preventDefault();
+      const r = tr.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height/2;
+      clearLessonDropMarks();
+      tr.classList.add(after ? "drop-after" : "drop-before");
+    });
+    tr.addEventListener("dragleave", ()=>{ tr.classList.remove("drop-before","drop-after"); });
+    tr.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const after = tr.classList.contains("drop-after");
+      clearLessonDropMarks();
+      if(draggedLessonId) moveLessonTo(course, draggedLessonId, lesson.id, after);
+    });
 
     const dateTd = document.createElement("td");
     const dateIn = document.createElement("input");
     dateIn.type = "date"; dateIn.value = lesson.date;
     dateIn.onchange = ()=>{
       if(!dateIn.value){ dateIn.value = lesson.date; showTopToast("Дата урока обязательна."); return; }
-      lesson.date = dateIn.value; save(); renderStudyTab(); renderMainStudyWarn();
+      lesson.date = dateIn.value; lesson.seq = LESSON_SEQ_LAST; normalizeLessons(course);
+      save(); renderStudyTab(); renderMainStudyWarn();
     };
     dateTd.appendChild(dateIn); tr.appendChild(dateTd);
 
@@ -2240,16 +2316,20 @@ function renderStudyTab(){
 
     const timeTd = document.createElement("td");
     timeTd.className = "lesson-time";
-    const plan = planActsFor(lesson.date, course.name);
-    if(!plan.weekExists){
+    const slot = lessonSlot(course, lesson);
+    if(!slot.weekExists){
       timeTd.textContent = "неделя не создана";
       timeTd.style.color = "var(--muted)";
-    } else if(!plan.acts.length){
+    } else if(!slot.actsCount){
       timeTd.textContent = "нет в плане";
       timeTd.classList.add("missing");
+    } else if(!slot.act){
+      timeTd.textContent = "нет свободного слота";
+      timeTd.classList.add("missing");
+      timeTd.title = `В плане на этот день ${slot.actsCount} ${zanyatiyWord(slot.actsCount)} «${course.name}» — меньше, чем уроков`;
     } else {
-      timeTd.textContent = plan.acts.map(a=>`${a.start}–${a.end}`).join(", ");
-      const planMin = Math.round(plan.acts.reduce((s,a)=>s+duration(a),0)*60);
+      timeTd.textContent = `${slot.act.start}–${slot.act.end}`;
+      const planMin = Math.round(duration(slot.act)*60);
       if(planMin!==lesson.duration){
         timeTd.classList.add("diff");
         timeTd.title = `В плане ${planMin} мин, по расписанию ${lesson.duration} мин`;
@@ -2276,6 +2356,7 @@ function renderStudyTab(){
     delBtn.onclick = ()=>{
       if(!confirm(`Удалить урок №${lesson.num} «${lesson.topic}»?`)) return;
       course.lessons = course.lessons.filter(l=>l.id!==lesson.id);
+      normalizeLessons(course);
       save(); renderStudyTab(); renderMainStudyWarn();
     };
     delTd.appendChild(delBtn); tr.appendChild(delTd);
@@ -2286,6 +2367,29 @@ function renderStudyTab(){
 
 function nextLessonNum(course){
   return (course.lessons||[]).reduce((m,l)=>Math.max(m, l.num||0), 0) + 1;
+}
+
+// перетаскивание уроков в таблице: урок встаёт перед/после целевого; если целевой урок в другой
+// день — урок переезжает на его дату. Номера после этого пересчитываются по порядку.
+let draggedLessonId = null;
+function clearLessonDropMarks(){
+  document.querySelectorAll("#lessonsBody tr.drop-before, #lessonsBody tr.drop-after")
+    .forEach(tr=> tr.classList.remove("drop-before","drop-after"));
+}
+function moveLessonTo(course, lessonId, targetId, after){
+  const list = sortedLessons(course);
+  const dragged = list.find(l=>l.id===lessonId);
+  const target = list.find(l=>l.id===targetId);
+  if(!dragged || !target || dragged===target) return;
+  const oldDate = dragged.date;
+  list.splice(list.indexOf(dragged), 1);
+  list.splice(list.indexOf(target) + (after ? 1 : 0), 0, dragged);
+  dragged.date = target.date;
+  list.forEach((l, i)=>{ l.seq = i; });
+  normalizeLessons(course);
+  markCourseDirty(currentCourseId);
+  renderAll();
+  if(oldDate!==dragged.date) showTopToast(`Урок «${dragged.topic}» перенесён на ${fmtWdDM(dragged.date)}.`);
 }
 
 document.getElementById("courseSelect").addEventListener("change", (e)=>{
@@ -2327,7 +2431,8 @@ document.getElementById("lessonAddBtn").addEventListener("click", ()=>{
   const dur = parseInt(document.getElementById("lessonAddDur").value, 10);
   const topic = document.getElementById("lessonAddTopic").value.trim();
   if(!date || !(dur>0) || !topic){ showTopToast("Заполни дату, продолжительность и тему урока."); return; }
-  course.lessons.push({id:newId(), num: nextLessonNum(course), date, duration: dur, topic, result:"", comment:"", done:false});
+  course.lessons.push({id:newId(), num: nextLessonNum(course), seq: LESSON_SEQ_LAST, date, duration: dur, topic, result:"", comment:"", done:false});
+  normalizeLessons(course);
   markCourseDirty(currentCourseId);
   document.getElementById("lessonAddTopic").value = "";
   renderAll();
@@ -2354,8 +2459,11 @@ document.getElementById("lessonsImportBtn").addEventListener("click", ()=>{
       if(!(dur>0)){ errors.push(`${lineNo}: продолжительность должна быть числом минут`); return; }
       if(!topic){ errors.push(`${lineNo}: нет темы урока`); return; }
       const existing = course.lessons.find(l=>l.num===num);
-      if(existing){ existing.date = date; existing.duration = dur; existing.topic = topic; updated++; }
-      else { course.lessons.push({id:newId(), num, date, duration: dur, topic, result:"", comment:"", done:false}); added++; }
+      if(existing){
+        if(existing.date!==date) existing.seq = LESSON_SEQ_LAST;
+        existing.date = date; existing.duration = dur; existing.topic = topic; updated++;
+      }
+      else { course.lessons.push({id:newId(), num, seq: LESSON_SEQ_LAST, date, duration: dur, topic, result:"", comment:"", done:false}); added++; }
       return;
     }
     m = line.match(/^результат\s*№?\s*(\d+)\s*\|(.*)$/i);
@@ -2368,11 +2476,11 @@ document.getElementById("lessonsImportBtn").addEventListener("click", ()=>{
       const comment = parts.slice(1).join(" | ").trim();
       if(comment) lesson.comment = comment;
       lesson.done = true;
-      // отмечаем галочкой и саму активность в плане недели, если она там есть
-      const plan = planActsFor(lesson.date, course.name);
-      if(plan.acts.length){
-        plan.acts.forEach(a=>{ a.done = true; });
-        markDayDirtyFor(plan.wk, plan.dn);
+      // отмечаем галочкой и само занятие в плане недели — слот именно этого урока
+      const slot = lessonSlot(course, lesson);
+      if(slot.act){
+        slot.act.done = true;
+        markDayDirtyFor(slot.plan.wk, slot.plan.dn);
       }
       results++;
       return;
@@ -2380,6 +2488,7 @@ document.getElementById("lessonsImportBtn").addEventListener("click", ()=>{
     errors.push(`${lineNo}: строка должна начинаться с «урок N |» или «результат N |»`);
   });
   if(added || updated || results){
+    normalizeLessons(course);
     markCourseDirty(currentCourseId);
     renderAll();
   }
@@ -3430,7 +3539,7 @@ async function loadUserData(uid){
   categoryLinks = meta.categoryLinks || {};
   templates = meta.templates || {};
   courses = meta.courses || {};
-  Object.values(courses).forEach(c=>{ if(!Array.isArray(c.lessons)) c.lessons = []; });
+  Object.values(courses).forEach(c=>{ if(!Array.isArray(c.lessons)) c.lessons = []; normalizeLessons(c); });
 
   weeks = {};
   const weeksSnap = await getDocs(userWeeksCol(uid));
